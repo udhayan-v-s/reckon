@@ -50,9 +50,16 @@ for required_file in "$METADATA_FILE" "$MAIN_FILE"; do
     fi
 done
 
-# Load application metadata and bootstrap.
+# Load application metadata.
 # shellcheck source=core/metadata.sh
-source "$METADATA_FILE"
+if ! source "$METADATA_FILE"; then
+    printf 'Error: Failed to load application metadata.\n' >&2
+    exit 1
+fi
 
+# Load the main application component.
 # shellcheck source=core/main.sh
-source "$MAIN_FILE"
+if ! source "$MAIN_FILE"; then
+    printf 'Error: Failed to load the main application component.\n' >&2
+    exit 1
+fi
