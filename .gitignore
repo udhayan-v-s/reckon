@@ -1,0 +1,30 @@
+# Scan results and generated data
+results/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.bak
+*.pid
+tmp/
+temp/
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Local configuration
+config/local.conf
+
+# Downloaded third-party wordlists
+wordlists/
+
+# Operating system files
+.DS_Store
+Thumbs.db
