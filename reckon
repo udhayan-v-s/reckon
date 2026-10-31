@@ -37,15 +37,22 @@ fi
 
 readonly PROJECT_ROOT
 
-# Locate the application entry component.
+# Locate application components.
+readonly METADATA_FILE="$PROJECT_ROOT/core/metadata.sh"
 readonly MAIN_FILE="$PROJECT_ROOT/core/main.sh"
 
-# Validate the application entry component.
-if [[ ! -f "$MAIN_FILE" || ! -r "$MAIN_FILE" ]]; then
-    printf 'Error: Application entry file is missing or unreadable.\n' >&2
-    exit 1
-fi
+# Validate required application files.
+for required_file in "$METADATA_FILE" "$MAIN_FILE"; do
+    if [[ ! -f "$required_file" || ! -r "$required_file" ]]; then
+        printf 'Error: Required application file is missing or unreadable: %s\n' \
+            "$required_file" >&2
+        exit 1
+    fi
+done
 
-# Load the application.
+# Load application metadata and bootstrap.
+# shellcheck source=core/metadata.sh
+source "$METADATA_FILE"
+
 # shellcheck source=core/main.sh
 source "$MAIN_FILE"
