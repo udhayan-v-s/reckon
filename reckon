@@ -5,7 +5,29 @@
 # Executable application launcher
 #
 
+# Ensure the application is running under Bash.
+if [ -z "${BASH_VERSION:-}" ]; then
+    printf 'Error: RECKON requires the Bash shell.\n' >&2
+    exit 1
+fi
+
 set -o nounset
+
+# Define the minimum supported Bash version.
+readonly MIN_BASH_MAJOR=4
+readonly MIN_BASH_MINOR=4
+
+# Validate the running Bash version.
+if (( BASH_VERSINFO[0] < MIN_BASH_MAJOR ||
+      (BASH_VERSINFO[0] == MIN_BASH_MAJOR &&
+       BASH_VERSINFO[1] < MIN_BASH_MINOR) )); then
+
+    printf 'Error: RECKON requires Bash %s.%s or newer.\n' \
+        "$MIN_BASH_MAJOR" "$MIN_BASH_MINOR" >&2
+
+    printf 'Detected Bash version: %s\n' "$BASH_VERSION" >&2
+    exit 1
+fi
 
 # Resolve the absolute project directory.
 if ! PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"; then
