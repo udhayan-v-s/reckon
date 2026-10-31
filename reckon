@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+#
+# RECKON - Network and Web Reconnaissance Toolkit
+# Executable application launcher
+#
+
+set -o nounset
+
+# Resolve the absolute project directory.
+if ! PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"; then
+    printf 'Error: Unable to determine the project directory.\n' >&2
+    exit 1
+fi
+
+readonly PROJECT_ROOT
+
+# Locate the application entry component.
+readonly MAIN_FILE="$PROJECT_ROOT/core/main.sh"
+
+# Validate the application entry component.
+if [[ ! -f "$MAIN_FILE" || ! -r "$MAIN_FILE" ]]; then
+    printf 'Error: Application entry file is missing or unreadable.\n' >&2
+    exit 1
+fi
+
+# Load the application.
+# shellcheck source=core/main.sh
+source "$MAIN_FILE"
