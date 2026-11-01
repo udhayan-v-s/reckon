@@ -115,6 +115,17 @@ cli_parse_args() {
                 shift 2
                 ;;
 
+            # Scan profile selection.
+            --profile)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_PROFILE="$2"
+                shift 2
+                ;;
+
             # Network scan selection.
             --network|-n)
                 CLI_NETWORK=true
