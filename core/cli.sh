@@ -161,6 +161,20 @@ cli_parse_args() {
                 shift 2
                 ;;
 
+            # Report format selection.
+            --format|-f)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                if ! cli_append_unique_csv CLI_FORMATS "$2"; then
+                    return 2
+                fi
+
+                shift 2
+                ;;
+
             # Help.
             --help|-h)
                 CLI_HELP=true
