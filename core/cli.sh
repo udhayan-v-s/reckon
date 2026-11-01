@@ -175,6 +175,13 @@ cli_parse_args() {
                 shift 2
                 ;;
 
+            # Disable report generation.
+            --no-report)
+
+                CLI_NO_REPORT=true
+                shift
+                ;;
+
             # Help.
             --help|-h)
                 CLI_HELP=true
