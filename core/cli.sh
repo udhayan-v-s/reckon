@@ -76,6 +76,16 @@ cli_parse_args() {
                 shift 2
                 ;;
 
+            # Targets file option.
+            --targets-file|-T)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_TARGETS_FILE="$2"
+                shift 2
+                ;;
 
             # Network scan selection.
             --network|-n)
