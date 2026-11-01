@@ -87,6 +87,20 @@ cli_parse_args() {
                 shift 2
                 ;;
 
+            # Custom module selection.
+            --module)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                if ! cli_append_unique_csv CLI_MODULES "$2"; then
+                    return 2
+                fi
+
+                shift 2
+                ;;
+
             # Network scan selection.
             --network|-n)
                 CLI_NETWORK=true
@@ -161,6 +175,93 @@ cli_require_value() {
             "$option" "$value" >&2
         return 2
     fi
+
+    return 0
+}
+
+# Append unique values from a comma-separated list to a CLI array.
+cli_append_unique_csv() {
+
+    local array_name="$1"
+    local csv_value="$2"
+    local remaining="$csv_value"
+    local item
+    local existing
+    local found
+    local is_last=false
+
+    local -a parsed_values=()
+
+    # Restrict the destination to known CLI arrays.
+    case "$array_name" in
+        CLI_MODULES|CLI_EXCLUDE_MODULES|CLI_FORMATS)
+            ;;
+        *)
+            printf 'Error: Invalid destination array: %s\n' "$array_name" >&2
+            return 2
+            ;;
+    esac
+
+    # Create a local reference to the destination array.
+    local -n destination_array="$array_name"
+
+    # Parse and validate all values before modifying the destination.
+    while :; do
+
+        if [[ "$remaining" == *,* ]]; then
+            item="${remaining%%,*}"
+            remaining="${remaining#*,}"
+        else
+            item="$remaining"
+            is_last=true
+        fi
+
+        # Trim leading and trailing whitespace.
+        item="${item#"${item%%[![:space:]]*}"}"
+        item="${item%"${item##*[![:space:]]}"}"
+
+        # Reject empty entries.
+        if [[ -z "$item" ]]; then
+            printf 'Error: Empty value found in %s list.\n' "$array_name" >&2
+            return 2
+        fi
+
+        found=false
+
+        # Check for duplicates in the current parsed values.
+        for existing in "${parsed_values[@]}"; do
+            if [[ "$existing" == "$item" ]]; then
+                found=true
+                break
+            fi
+        done
+
+        # Check for duplicates already present in the destination.
+        if [[ "$found" == false ]]; then
+            for existing in "${destination_array[@]}"; do
+                if [[ "$existing" == "$item" ]]; then
+                    found=true
+                    break
+                fi
+            done
+        fi
+
+        # Preserve only the first occurrence.
+        if [[ "$found" == false ]]; then
+            parsed_values+=("$item")
+        fi
+
+        # Stop after processing the final entry.
+        if [[ "$is_last" == true ]]; then
+            break
+        fi
+
+    done
+
+    # Append validated, unique values to the destination array.
+    for item in "${parsed_values[@]}"; do
+        destination_array+=("$item")
+    done
 
     return 0
 }
