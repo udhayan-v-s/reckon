@@ -150,6 +150,17 @@ cli_parse_args() {
                 shift
                 ;;
 
+            # Output directory.
+            --output|-o)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_OUTPUT_DIR="$2"
+                shift 2
+                ;;
+
             # Help.
             --help|-h)
                 CLI_HELP=true
