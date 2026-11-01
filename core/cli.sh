@@ -182,6 +182,17 @@ cli_parse_args() {
                 shift
                 ;;
 
+            # Log file.
+            --log-file)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_LOG_FILE="$2"
+                shift 2
+                ;;
+
             # Help.
             --help|-h)
                 CLI_HELP=true
