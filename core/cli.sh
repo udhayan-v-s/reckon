@@ -150,6 +150,17 @@ cli_parse_args() {
                 shift
                 ;;
 
+            # Execution timeout.
+            --timeout)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_TIMEOUT="$2"
+                shift 2
+                ;;   
+
             # Output directory.
             --output|-o)
 
