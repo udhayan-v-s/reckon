@@ -172,6 +172,17 @@ cli_parse_args() {
                 shift 2
                 ;;   
 
+            # Execution rate limit.
+            --rate-limit)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_RATE_LIMIT="$2"
+                shift 2
+                ;;
+
             # Output directory.
             --output|-o)
 
