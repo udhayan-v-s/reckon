@@ -161,6 +161,17 @@ cli_parse_args() {
                 shift 2
                 ;;
 
+            # Enumeration wordlist.
+            --wordlist)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_WORDLIST="$2"
+                shift 2
+                ;;
+
             # Execution thread count.
             --threads)
 
