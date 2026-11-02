@@ -77,7 +77,14 @@ cli_parse_args() {
                 CLI_COLOR_MODE="never"
                 shift
                 ;;
-                
+
+            # Suppress the startup banner.
+            --no-banner)
+
+                CLI_NO_BANNER=true
+                shift
+                ;;
+
             # Target option.
             --target|-t)
 
