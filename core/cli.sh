@@ -64,7 +64,20 @@ cli_parse_args() {
 
         case "$1" in
 
-            
+            # Force terminal colors.
+            --color)
+
+                CLI_COLOR_MODE="always"
+                shift
+                ;;
+
+            # Disable terminal colors.
+            --no-color)
+
+                CLI_COLOR_MODE="never"
+                shift
+                ;;
+                
             # Target option.
             --target|-t)
 
