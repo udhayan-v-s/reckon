@@ -92,6 +92,13 @@ cli_parse_args() {
                 shift
                 ;;
 
+            # Request a listing of available modules.
+            --list-modules)
+
+                CLI_LIST_MODULES=true
+                shift
+                ;;
+
             # Target option.
             --target|-t)
 
