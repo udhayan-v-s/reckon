@@ -99,6 +99,13 @@ cli_parse_args() {
                 shift
                 ;;
 
+            # Request a simulated scan execution.
+            --dry-run)
+
+                CLI_DRY_RUN=true
+                shift
+                ;;
+
             # Target option.
             --target|-t)
 
