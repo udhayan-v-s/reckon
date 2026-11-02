@@ -460,6 +460,7 @@ cli_append_unique_csv() {
 }
 
 # Display command-line help.
+
 cli_show_help() {
 
     cat <<EOF
@@ -469,19 +470,45 @@ Usage:
     reckon [OPTIONS]
 
 General options:
-    -h, --help              Display this help message.
-    -V, --version           Display application version.
+    -h, --help                  Display this help message.
+    -V, --version               Display application version.
+        --no-banner             Suppress the startup banner.
+        --check                 Check the environment and dependencies.
+        --list-modules          List available reconnaissance modules.
+        --dry-run               Simulate scan execution without running tools.
 
 Target options:
-    -t, --target TARGET     Specify a single scan target.
+    -t, --target TARGET         Specify a single scan target.
+    -T, --targets-file FILE     Specify a file containing scan targets.
 
 Scan selection:
-    -n, --network           Select network reconnaissance.
-    -w, --web               Select web reconnaissance.
+    -n, --network               Select network reconnaissance.
+    -w, --web                   Select web reconnaissance.
+        --module MODULES        Select specific reconnaissance modules.
+    -x, --exclude MODULES       Exclude specified reconnaissance modules.
+        --profile PROFILE       Select a scan profile.
+
+Output and reporting:
+    -o, --output DIR            Specify the output directory.
+    -f, --format FORMATS        Specify report formats (JSON, TXT, MD).
+        --no-report             Disable report generation.
+        --log-file FILE         Specify the log file.
+
+Execution options:
+        --timeout SECONDS       Set the execution timeout.
+        --threads NUMBER        Set the execution thread count.
+        --rate-limit NUMBER     Set the execution rate limit.
+        --retries NUMBER        Set the retry count.
+        --ports PORTS           Specify target ports.
+        --wordlist FILE         Specify an enumeration wordlist.
+        --config FILE           Specify a configuration file.
 
 Display options:
-    -v, --verbose           Enable verbose output.
-    -q, --quiet             Suppress non-essential output.
+    -v, --verbose               Enable verbose output.
+    -q, --quiet                 Suppress non-essential output.
+        --debug                 Enable debug mode.
+        --color                 Force colored output.
+        --no-color              Disable colored output.
 
 Examples:
     reckon --help
@@ -490,6 +517,10 @@ Examples:
     reckon --target 192.0.2.10 --network
     reckon --target https://example.com --web
     reckon --target example.com --network --web
+    reckon --target example.com --module host,dns
+    reckon --target example.com --network --dry-run
+    reckon --target example.com --web --format JSON,MD
+    reckon --target example.com --network --debug --no-color
 
 For more information, see the project README.
 
