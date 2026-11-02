@@ -172,6 +172,17 @@ cli_parse_args() {
                 shift 2
                 ;;
 
+            # Configuration file.
+            --config)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_CONFIG="$2"
+                shift 2
+                ;;
+
             # Execution thread count.
             --threads)
 
