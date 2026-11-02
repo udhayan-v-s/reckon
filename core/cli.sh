@@ -85,6 +85,13 @@ cli_parse_args() {
                 shift
                 ;;
 
+            # Request an environment and dependency check.
+            --check)
+
+                CLI_CHECK=true
+                shift
+                ;;
+
             # Target option.
             --target|-t)
 
