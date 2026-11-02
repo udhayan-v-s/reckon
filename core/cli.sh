@@ -270,6 +270,13 @@ cli_parse_args() {
                 shift 2
                 ;;
 
+            # Enable debug mode.
+            --debug)
+
+                CLI_DEBUG=true
+                shift
+                ;;
+
             # Help.
             --help|-h)
                 CLI_HELP=true
