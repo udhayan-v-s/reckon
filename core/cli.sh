@@ -149,7 +149,18 @@ cli_parse_args() {
                 CLI_QUIET=true
                 shift
                 ;;
-                
+
+            # Target port selection.
+            --ports)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_PORTS="$2"
+                shift 2
+                ;;
+
             # Execution thread count.
             --threads)
 
