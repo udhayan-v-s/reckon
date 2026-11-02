@@ -149,6 +149,17 @@ cli_parse_args() {
                 CLI_QUIET=true
                 shift
                 ;;
+                
+            # Execution thread count.
+            --threads)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_THREADS="$2"
+                shift 2
+                ;;
 
             # Execution timeout.
             --timeout)
