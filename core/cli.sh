@@ -342,6 +342,97 @@ cli_parse_args() {
 
 }
 
+# Validate target requirements for scan selection.
+cli_validate_scan_selection() {
+
+    # Check whether a scan mode was selected.
+    if [[ "$CLI_NETWORK" == true || "$CLI_WEB" == true ]]; then
+
+        # Require at least one target source.
+        if [[ -z "$CLI_TARGET" && -z "$CLI_TARGETS_FILE" ]]; then
+            printf 'Error: A target is required when network or web scanning is selected.\n' >&2
+            printf 'Use --target or --targets-file to specify a scan target.\n' >&2
+            return 2
+        fi
+
+    fi
+
+    return 0
+}
+
+# Validate module selection and module identifiers.
+cli_validate_modules() {
+
+    local module
+    local valid_module
+    local is_valid
+
+    local -a valid_modules=(
+        host
+        dns
+        port
+        service
+        os
+        ssh
+        ftp
+        http
+        https
+        smb
+        telnet
+        http-probe
+        subdomain
+        crawl
+        technology
+        cms
+        waf
+        directory
+        file
+        vhost
+        endpoint
+        http-analysis
+        tls
+        resources
+        historical-urls
+    )
+
+    # Reject custom module selection with network or web scan modes.
+    if [[ ${#CLI_MODULES[@]} -gt 0 ]]; then
+
+        if [[ "$CLI_NETWORK" == true || "$CLI_WEB" == true ]]; then
+            printf 'Error: --module cannot be combined with --network or --web.\n' >&2
+            return 2
+        fi
+
+    fi
+
+    # Reject simultaneous module inclusion and exclusion.
+    if [[ ${#CLI_MODULES[@]} -gt 0 && ${#CLI_EXCLUDE_MODULES[@]} -gt 0 ]]; then
+        printf 'Error: --module and --exclude cannot be used together.\n' >&2
+        return 2
+    fi
+
+    # Validate selected and excluded module identifiers.
+    for module in "${CLI_MODULES[@]}" "${CLI_EXCLUDE_MODULES[@]}"; do
+
+        is_valid=false
+
+        for valid_module in "${valid_modules[@]}"; do
+            if [[ "$module" == "$valid_module" ]]; then
+                is_valid=true
+                break
+            fi
+        done
+
+        if [[ "$is_valid" == false ]]; then
+            printf 'Error: Invalid module identifier: %s\n' "$module" >&2
+            printf 'Use --list-modules to view available modules.\n' >&2
+            return 2
+        fi
+
+    done
+
+    return 0
+}
 
 # Validate that an option has a usable value.
 cli_require_value() {
