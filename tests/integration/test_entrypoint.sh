@@ -118,6 +118,9 @@ prepare_test_copy() {
 
     cp -p "$PROJECT_ROOT/core/main.sh" "$destination/core/main.sh" ||
         fail "Copy main component"
+
+    cp -p "$PROJECT_ROOT/core/cli.sh" "$destination/core/cli.sh" ||
+        fail "Copy CLI component"
 }
 
 printf '%s\n' "RECKON - Entry-Point Integration Tests"
