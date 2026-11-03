@@ -18,6 +18,7 @@ fi
 reckon_main() {
 
     local parse_status
+    local validation_status
 
     # Initialize CLI state.
     cli_init
@@ -40,6 +41,14 @@ reckon_main() {
     if [[ "$CLI_VERSION" == true ]]; then
         cli_show_version
         return 0
+    fi
+
+    # Validate command-line arguments.
+    if cli_validate_args; then
+        :
+    else
+        validation_status=$?
+        exit "$validation_status"
     fi
 
     # Temporary application identity display.

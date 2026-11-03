@@ -600,6 +600,19 @@ cli_validate_files() {
     return 0
 }
 
+# Run all CLI argument validation checks.
+cli_validate_args() {
+
+    cli_validate_scan_selection || return $?
+    cli_validate_modules || return $?
+    cli_validate_reporting || return $?
+    cli_validate_display || return $?
+    cli_validate_numeric_options || return $?
+    cli_validate_files || return $?
+
+    return 0
+}
+
 # Validate that an option has a usable value.
 cli_require_value() {
 
