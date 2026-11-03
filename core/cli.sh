@@ -492,6 +492,64 @@ cli_validate_display() {
     return 0
 }
 
+# Validate numeric execution options.
+cli_validate_numeric_options() {
+
+    local index
+    local option
+    local value
+    local minimum
+
+    local -a option_names=(
+        --timeout
+        --threads
+        --rate-limit
+        --retries
+    )
+
+    local -a option_values=(
+        "$CLI_TIMEOUT"
+        "$CLI_THREADS"
+        "$CLI_RATE_LIMIT"
+        "$CLI_RETRIES"
+    )
+
+    local -a minimum_values=(
+        1
+        1
+        1
+        0
+    )
+
+    # Validate each supplied numeric option.
+    for index in "${!option_names[@]}"; do
+
+        option="${option_names[$index]}"
+        value="${option_values[$index]}"
+        minimum="${minimum_values[$index]}"
+
+        # Skip options that were not supplied.
+        if [[ -z "$value" ]]; then
+            continue
+        fi
+
+        # Require decimal digits only.
+        if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+            printf 'Error: %s must be a non-negative integer.\n' "$option" >&2
+            return 2
+        fi
+
+        # Positive-integer options must contain at least one non-zero digit.
+        if [[ "$minimum" == 1 && ! "$value" =~ [1-9] ]]; then
+            printf 'Error: %s must be at least 1.\n' "$option" >&2
+            return 2
+        fi
+
+    done
+
+    return 0
+}
+
 # Validate that an option has a usable value.
 cli_require_value() {
 
