@@ -550,6 +550,56 @@ cli_validate_numeric_options() {
     return 0
 }
 
+# Validate an input file.
+cli_validate_file() {
+
+    local option="$1"
+    local file_path="$2"
+
+    # Check whether the file exists and is a regular file.
+    if [[ ! -f "$file_path" ]]; then
+        printf 'Error: File specified by %s does not exist or is not a regular file: %s\n' \
+            "$option" "$file_path" >&2
+        return 2
+    fi
+
+    # Check whether the file is readable.
+    if [[ ! -r "$file_path" ]]; then
+        printf 'Error: File specified by %s is not readable: %s\n' \
+            "$option" "$file_path" >&2
+        return 2
+    fi
+
+    return 0
+}
+
+# Validate CLI input files.
+cli_validate_files() {
+
+    # Validate the targets file when supplied.
+    if [[ -n "$CLI_TARGETS_FILE" ]]; then
+        if ! cli_validate_file "--targets-file" "$CLI_TARGETS_FILE"; then
+            return 2
+        fi
+    fi
+
+    # Validate the enumeration wordlist when supplied.
+    if [[ -n "$CLI_WORDLIST" ]]; then
+        if ! cli_validate_file "--wordlist" "$CLI_WORDLIST"; then
+            return 2
+        fi
+    fi
+
+    # Validate the configuration file when supplied.
+    if [[ -n "$CLI_CONFIG" ]]; then
+        if ! cli_validate_file "--config" "$CLI_CONFIG"; then
+            return 2
+        fi
+    fi
+
+    return 0
+}
+
 # Validate that an option has a usable value.
 cli_require_value() {
 
