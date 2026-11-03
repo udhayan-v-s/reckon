@@ -64,6 +64,41 @@ assert_success() {
     pass "$description"
 }
 
+# Execute a command, expect success, and verify its output.
+assert_success_output() {
+    local description="$1"
+    local expected_output="$2"
+    local unexpected_output="$3"
+    shift 3
+
+    local output
+    local status
+
+    if output="$("$@" 2>&1)"; then
+        status=0
+    else
+        status=$?
+    fi
+
+    if (( status != 0 )); then
+        printf '%s\n' "$output" >&2
+        fail "$description (exit code: $status)"
+    fi
+
+    if [[ "$output" != *"$expected_output"* ]]; then
+        printf '%s\n' "$output" >&2
+        fail "$description (expected output not found)"
+    fi
+
+    if [[ -n "$unexpected_output" &&
+          "$output" == *"$unexpected_output"* ]]; then
+        printf '%s\n' "$output" >&2
+        fail "$description (unexpected output found)"
+    fi
+
+    pass "$description"
+}
+
 # Execute a command and expect a specific failure.
 assert_failure() {
     local description="$1"
@@ -196,6 +231,48 @@ assert_failure \
     1 \
     "Failed to load application metadata." \
     "$FAILED_METADATA/reckon"
+
+# Test 10: Help takes priority over version.
+assert_success_output \
+    "Help takes priority over version" \
+    "Usage:" \
+    "RECKON 0.1.0" \
+    "$PROJECT_ROOT/reckon" --help --version
+
+# Test 11: Help priority is independent of argument order.
+assert_success_output \
+    "Help priority with reversed argument order" \
+    "Usage:" \
+    "RECKON 0.1.0" \
+    "$PROJECT_ROOT/reckon" --version --help
+
+# Test 12: Version information is displayed.
+assert_success_output \
+    "Version information" \
+    "RECKON 0.1.0" \
+    "" \
+    "$PROJECT_ROOT/reckon" --version
+
+# Test 13: Valid network scan arguments are accepted.
+assert_success_output \
+    "Valid network scan arguments" \
+    "Version: 0.1.0" \
+    "" \
+    "$PROJECT_ROOT/reckon" --network --target 192.0.2.10
+
+# Test 14: Invalid arguments are rejected.
+assert_failure \
+    "Reject invalid CLI arguments" \
+    2 \
+    "Unknown option: --invalid-option" \
+    "$PROJECT_ROOT/reckon" --invalid-option
+
+# Test 15: Network scanning without a target is rejected.
+assert_failure \
+    "Reject network scan without a target" \
+    2 \
+    "A target is required" \
+    "$PROJECT_ROOT/reckon" --network
 
 # Final summary.
 printf '%s\n' "--------------------------------------"
