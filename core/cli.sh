@@ -434,6 +434,64 @@ cli_validate_modules() {
     return 0
 }
 
+# Validate report formats and reporting options.
+cli_validate_reporting() {
+
+    local format
+    local normalized_format
+    local valid_format
+    local is_valid
+
+    local -a valid_formats=(
+        JSON
+        TXT
+        MD
+    )
+
+    # Reject report formats when report generation is disabled.
+    if [[ "$CLI_NO_REPORT" == true && ${#CLI_FORMATS[@]} -gt 0 ]]; then
+        printf 'Error: --no-report cannot be combined with --format.\n' >&2
+        return 2
+    fi
+
+    # Validate every requested report format.
+    for format in "${CLI_FORMATS[@]}"; do
+
+        normalized_format="${format^^}"
+        is_valid=false
+
+        for valid_format in "${valid_formats[@]}"; do
+
+            if [[ "$normalized_format" == "$valid_format" ]]; then
+                is_valid=true
+                break
+            fi
+
+        done
+
+        if [[ "$is_valid" == false ]]; then
+            printf 'Error: Unsupported report format: %s\n' "$format" >&2
+            printf 'Supported formats: JSON, TXT, MD.\n' >&2
+            return 2
+        fi
+
+    done
+
+    return 0
+}
+
+# Validate display options.
+cli_validate_display() {
+
+    # Reject conflicting verbose and quiet modes.
+    if [[ "$CLI_VERBOSE" == true && "$CLI_QUIET" == true ]]; then
+        printf 'Error: --verbose and --quiet cannot be used together.\n' >&2
+        return 2
+    fi
+
+    return 0
+}
+
 # Validate that an option has a usable value.
 cli_require_value() {
 
