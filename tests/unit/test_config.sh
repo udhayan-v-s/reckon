@@ -114,6 +114,24 @@ test_config_initialization() {
     else
         fail "Initialization resets previous state"
     fi
+
+    # Test 3: Effective state is reset to empty.
+    if [[ "$CONFIG_EFFECTIVE_OUTPUT_DIR" == "" &&
+          "$CONFIG_EFFECTIVE_COLOR" == "" &&
+          "$CONFIG_EFFECTIVE_PROFILE" == "" &&
+          "$CONFIG_EFFECTIVE_TIMEOUT" == "" &&
+          "$CONFIG_EFFECTIVE_THREADS" == "" &&
+          "$CONFIG_EFFECTIVE_RATE_LIMIT" == "" &&
+          "$CONFIG_EFFECTIVE_RETRIES" == "" &&
+          "$CONFIG_EFFECTIVE_NO_REPORT" == "" &&
+          "$CONFIG_EFFECTIVE_LOG_FILE" == "" &&
+          ${#CONFIG_EFFECTIVE_MODULES[@]} -eq 0 &&
+          ${#CONFIG_EFFECTIVE_EXCLUDE_MODULES[@]} -eq 0 &&
+          ${#CONFIG_EFFECTIVE_FORMATS[@]} -eq 0 ]]; then
+        pass "Effective state reset to empty"
+    else
+        fail "Effective state reset to empty"
+    fi
 }
 
 # UT-02: Configuration dependency tests.
@@ -878,7 +896,105 @@ JSON
     CONFIG_ERROR=""
 }
 
-# Run UT-01 through UT-07.
+# UT-08: Configuration application tests.
+test_config_apply() {
+
+    printf '\n%s\n' "UT-08: Configuration Application"
+
+    local no_file defaults_only overrides
+
+    no_file="$TEST_ROOT/apply-no-file.txt"
+    defaults_only="$TEST_ROOT/apply-defaults.json"
+    overrides="$TEST_ROOT/apply-overrides.json"
+
+    : > "$no_file"
+
+    printf '%s\n' '{"schema_version":1}' > "$defaults_only"
+
+    cat > "$overrides" <<JSON
+{
+  "schema_version": 1,
+  "general": {"output_dir": "custom-out", "color": "always"},
+  "scanning": {"modules": ["host", "dns"], "exclude_modules": ["ftp"], "profile": "full", "ports": "1-1000", "wordlist": ""},
+  "execution": {"timeout": 60, "threads": 4, "rate_limit": 2, "retries": 1},
+  "reporting": {"formats": ["JSON", "MD"], "no_report": false, "log_file": "/tmp/reckon.log"}
+}
+JSON
+
+    # Test 1: No config file — defaults applied.
+    config_init
+    CONFIG_FILE=""
+
+    if config_load; then
+        if [[ "$CONFIG_EFFECTIVE_OUTPUT_DIR" == "results" &&
+              "$CONFIG_EFFECTIVE_COLOR" == "auto" &&
+              "$CONFIG_EFFECTIVE_TIMEOUT" == "300" &&
+              "$CONFIG_EFFECTIVE_THREADS" == "10" &&
+              "$CONFIG_EFFECTIVE_RATE_LIMIT" == "5" &&
+              "$CONFIG_EFFECTIVE_RETRIES" == "2" &&
+              "$CONFIG_EFFECTIVE_NO_REPORT" == "false" &&
+              ${#CONFIG_EFFECTIVE_MODULES[@]} -eq 0 &&
+              ${#CONFIG_EFFECTIVE_FORMATS[@]} -eq 0 ]]; then
+            pass "No config file applies schema defaults"
+        else
+            fail "No config file applies schema defaults (incorrect state)"
+        fi
+    else
+        fail "No config file applies schema defaults (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 2: Empty config file (only schema_version) — defaults applied.
+    config_init
+    CONFIG_FILE="$defaults_only"
+
+    if config_load; then
+        if [[ "$CONFIG_EFFECTIVE_OUTPUT_DIR" == "results" &&
+              "$CONFIG_EFFECTIVE_TIMEOUT" == "300" &&
+              "$CONFIG_EFFECTIVE_RETRIES" == "2" ]]; then
+            pass "Schema-only config applies defaults"
+        else
+            fail "Schema-only config applies defaults (incorrect state)"
+        fi
+    else
+        fail "Schema-only config applies defaults (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 3: Full config — all effective values reflect file.
+    config_init
+    CONFIG_FILE="$overrides"
+
+    if config_load; then
+        if [[ "$CONFIG_EFFECTIVE_OUTPUT_DIR" == "custom-out" &&
+              "$CONFIG_EFFECTIVE_COLOR" == "always" &&
+              "$CONFIG_EFFECTIVE_PROFILE" == "full" &&
+              "$CONFIG_EFFECTIVE_PORTS" == "1-1000" &&
+              "$CONFIG_EFFECTIVE_TIMEOUT" == "60" &&
+              "$CONFIG_EFFECTIVE_THREADS" == "4" &&
+              "$CONFIG_EFFECTIVE_RATE_LIMIT" == "2" &&
+              "$CONFIG_EFFECTIVE_RETRIES" == "1" &&
+              "$CONFIG_EFFECTIVE_NO_REPORT" == "false" &&
+              "$CONFIG_EFFECTIVE_LOG_FILE" == "/tmp/reckon.log" &&
+              ${#CONFIG_EFFECTIVE_MODULES[@]} -eq 2 &&
+              "${CONFIG_EFFECTIVE_MODULES[0]}" == "host" &&
+              "${CONFIG_EFFECTIVE_MODULES[1]}" == "dns" &&
+              ${#CONFIG_EFFECTIVE_EXCLUDE_MODULES[@]} -eq 1 &&
+              "${CONFIG_EFFECTIVE_EXCLUDE_MODULES[0]}" == "ftp" &&
+              ${#CONFIG_EFFECTIVE_FORMATS[@]} -eq 2 &&
+              "${CONFIG_EFFECTIVE_FORMATS[0]}" == "JSON" &&
+              "${CONFIG_EFFECTIVE_FORMATS[1]}" == "MD" ]]; then
+            pass "Full config populates all effective values"
+        else
+            fail "Full config populates all effective values (incorrect state: out=$CONFIG_EFFECTIVE_OUTPUT_DIR timeout=$CONFIG_EFFECTIVE_TIMEOUT modules=${CONFIG_EFFECTIVE_MODULES[*]})"
+        fi
+    else
+        fail "Full config populates all effective values (load failed: $CONFIG_ERROR)"
+    fi
+
+    CONFIG_FILE=""
+    CONFIG_ERROR=""
+}
+
+# Run UT-01 through UT-08.
 test_config_initialization
 test_config_dependencies
 test_config_file_validation
@@ -886,5 +1002,6 @@ test_config_loading
 test_config_optional_loading
 test_config_schema_validation
 test_config_values
+test_config_apply
 
 test_summary

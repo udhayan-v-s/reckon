@@ -5,6 +5,10 @@
 # Configuration management
 #
 
+# Configuration state is consumed by other application components
+# (config_apply, config_apply_cli, execution phases) and by core/main.sh.
+# shellcheck disable=SC2034
+
 # Initialize configuration state.
 config_init() {
 
@@ -12,6 +16,22 @@ config_init() {
     CONFIG_JSON=""
     CONFIG_LOADED=false
     CONFIG_ERROR=""
+
+    # Effective configuration state. Populated by config_apply.
+    CONFIG_EFFECTIVE_OUTPUT_DIR=""
+    CONFIG_EFFECTIVE_COLOR=""
+    CONFIG_EFFECTIVE_MODULES=()
+    CONFIG_EFFECTIVE_EXCLUDE_MODULES=()
+    CONFIG_EFFECTIVE_PROFILE=""
+    CONFIG_EFFECTIVE_PORTS=""
+    CONFIG_EFFECTIVE_WORDLIST=""
+    CONFIG_EFFECTIVE_TIMEOUT=""
+    CONFIG_EFFECTIVE_THREADS=""
+    CONFIG_EFFECTIVE_RATE_LIMIT=""
+    CONFIG_EFFECTIVE_RETRIES=""
+    CONFIG_EFFECTIVE_FORMATS=()
+    CONFIG_EFFECTIVE_NO_REPORT=""
+    CONFIG_EFFECTIVE_LOG_FILE=""
 
     return 0
 }
@@ -67,8 +87,11 @@ config_load() {
     CONFIG_LOADED=false
     CONFIG_ERROR=""
 
-    # Configuration is optional.
+    # Configuration is optional. Apply schema defaults when no file is supplied.
     if [[ -z "$CONFIG_FILE" ]]; then
+        if ! config_apply; then
+            return 1
+        fi
         return 0
     fi
 
@@ -109,7 +132,16 @@ config_load() {
         return 1
     fi
 
+    # Mark the configuration as loaded before applying it, so that
+    # config_apply sees CONFIG_LOADED=true and applies the file values.
     CONFIG_LOADED=true
+
+    # Apply effective values.
+    if ! config_apply; then
+        CONFIG_LOADED=false
+        CONFIG_JSON=""
+        return 1
+    fi
 
     return 0
 }
@@ -463,6 +495,131 @@ config_validate_values() {
         fi
 
         CONFIG_JSON="$normalized_json"
+    fi
+
+    return 0
+}
+
+# Populate effective configuration state from CONFIG_JSON.
+# Applies schema defaults for absent values. Does not apply CLI overrides;
+# that is handled by config_apply_cli (M3.6).
+config_apply() {
+
+    local value
+    local array_entry
+
+    # Start from schema defaults. Each default matches section 8 of the
+    # frozen configuration specification.
+    CONFIG_EFFECTIVE_OUTPUT_DIR="results"
+    CONFIG_EFFECTIVE_COLOR="auto"
+    CONFIG_EFFECTIVE_MODULES=()
+    CONFIG_EFFECTIVE_EXCLUDE_MODULES=()
+    CONFIG_EFFECTIVE_PROFILE=""
+    CONFIG_EFFECTIVE_PORTS=""
+    CONFIG_EFFECTIVE_WORDLIST=""
+    CONFIG_EFFECTIVE_TIMEOUT=300
+    CONFIG_EFFECTIVE_THREADS=10
+    CONFIG_EFFECTIVE_RATE_LIMIT=5
+    CONFIG_EFFECTIVE_RETRIES=2
+    CONFIG_EFFECTIVE_FORMATS=()
+    CONFIG_EFFECTIVE_NO_REPORT=false
+    CONFIG_EFFECTIVE_LOG_FILE=""
+
+    # If no configuration file was loaded, defaults are the final result.
+    if [[ "$CONFIG_LOADED" == false ]]; then
+        return 0
+    fi
+
+    if [[ -z "$CONFIG_JSON" ]]; then
+        CONFIG_ERROR="Configuration apply error: CONFIG_JSON is empty while CONFIG_LOADED is true"
+        return 1
+    fi
+
+    # general.output_dir
+    value=$(jq -r '.general.output_dir // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_OUTPUT_DIR="$value"
+    fi
+
+    # general.color
+    value=$(jq -r '.general.color // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_COLOR="$value"
+    fi
+
+    # scanning.modules
+    CONFIG_EFFECTIVE_MODULES=()
+    while IFS= read -r array_entry; do
+        [[ -z "$array_entry" ]] && continue
+        CONFIG_EFFECTIVE_MODULES+=("$array_entry")
+    done < <(jq -r '.scanning.modules[]? // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+
+    # scanning.exclude_modules
+    CONFIG_EFFECTIVE_EXCLUDE_MODULES=()
+    while IFS= read -r array_entry; do
+        [[ -z "$array_entry" ]] && continue
+        CONFIG_EFFECTIVE_EXCLUDE_MODULES+=("$array_entry")
+    done < <(jq -r '.scanning.exclude_modules[]? // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+
+    # scanning.profile
+    value=$(jq -r '.scanning.profile // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_PROFILE="$value"
+    fi
+
+    # scanning.ports
+    value=$(jq -r '.scanning.ports // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_PORTS="$value"
+    fi
+
+    # scanning.wordlist
+    value=$(jq -r '.scanning.wordlist // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_WORDLIST="$value"
+    fi
+
+    # execution.timeout
+    value=$(jq -r '.execution.timeout // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_TIMEOUT="$value"
+    fi
+
+    # execution.threads
+    value=$(jq -r '.execution.threads // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_THREADS="$value"
+    fi
+
+    # execution.rate_limit
+    value=$(jq -r '.execution.rate_limit // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_RATE_LIMIT="$value"
+    fi
+
+    # execution.retries
+    value=$(jq -r '.execution.retries // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_RETRIES="$value"
+    fi
+
+    # reporting.formats
+    CONFIG_EFFECTIVE_FORMATS=()
+    while IFS= read -r array_entry; do
+        [[ -z "$array_entry" ]] && continue
+        CONFIG_EFFECTIVE_FORMATS+=("$array_entry")
+    done < <(jq -r '.reporting.formats[]? // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+
+    # reporting.no_report
+    value=$(jq -r '.reporting.no_report // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_NO_REPORT="$value"
+    fi
+
+    # reporting.log_file
+    value=$(jq -r '.reporting.log_file // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    if [[ -n "$value" ]]; then
+        CONFIG_EFFECTIVE_LOG_FILE="$value"
     fi
 
     return 0
