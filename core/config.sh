@@ -103,6 +103,12 @@ config_load() {
         return 1
     fi
 
+    # Validate configuration values and normalize formats.
+    if ! config_validate_values; then
+        CONFIG_JSON=""
+        return 1
+    fi
+
     CONFIG_LOADED=true
 
     return 0
@@ -324,4 +330,140 @@ config_validate_schema() {
 
     CONFIG_ERROR="Configuration schema error: $first_violation"
     return 1
+}
+
+# Load the canonical module identifier list into an array.
+# Mirrors _cli_valid_modules so configuration validation and CLI
+# validation use the same source of truth.
+config_valid_modules() {
+    local module_id
+
+    CONFIG_VALID_MODULES=()
+
+    while IFS= read -r module_id; do
+        CONFIG_VALID_MODULES+=("$module_id")
+    done < <(_cli_valid_modules)
+}
+
+# Validate configuration values and normalize reporting formats.
+# Semantic validation. Structure and types are handled by
+# config_validate_schema.
+config_validate_values() {
+
+    local timeout threads rate_limit retries
+    local wordlist
+    local no_report formats_count
+    local normalized_json
+    local module_entry
+    local is_valid
+
+    # Configuration is optional. Nothing to validate.
+    if [[ "$CONFIG_LOADED" == false && -z "$CONFIG_JSON" ]]; then
+        return 0
+    fi
+
+    if [[ -z "$CONFIG_JSON" ]]; then
+        CONFIG_ERROR="Configuration value error: configuration is empty"
+        return 1
+    fi
+
+    # --- Numeric range checks ---
+    timeout=$(jq -r '.execution.timeout // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    threads=$(jq -r '.execution.threads // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    rate_limit=$(jq -r '.execution.rate_limit // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+    retries=$(jq -r '.execution.retries // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+
+    if [[ -n "$timeout" && "$timeout" -lt 1 ]]; then
+        CONFIG_ERROR="Configuration value error: execution.timeout: must be at least 1"
+        return 1
+    fi
+
+    if [[ -n "$threads" && "$threads" -lt 1 ]]; then
+        CONFIG_ERROR="Configuration value error: execution.threads: must be at least 1"
+        return 1
+    fi
+
+    if [[ -n "$rate_limit" && "$rate_limit" -lt 1 ]]; then
+        CONFIG_ERROR="Configuration value error: execution.rate_limit: must be at least 1"
+        return 1
+    fi
+
+    if [[ -n "$retries" && "$retries" -lt 0 ]]; then
+        CONFIG_ERROR="Configuration value error: execution.retries: must be at least 0"
+        return 1
+    fi
+
+    # --- Wordlist file check ---
+    wordlist=$(jq -r '.scanning.wordlist // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+
+    if [[ -n "$wordlist" ]]; then
+        if [[ ! -f "$wordlist" ]]; then
+            CONFIG_ERROR="Configuration value error: scanning.wordlist: file does not exist or is not a regular file: $wordlist"
+            return 1
+        fi
+        if [[ ! -r "$wordlist" ]]; then
+            CONFIG_ERROR="Configuration value error: scanning.wordlist: file is not readable: $wordlist"
+            return 1
+        fi
+    fi
+
+    # --- Module identifier validation ---
+    config_valid_modules
+
+    while IFS= read -r module_entry; do
+        [[ -z "$module_entry" ]] && continue
+
+        is_valid=false
+        for valid_module in "${CONFIG_VALID_MODULES[@]}"; do
+            if [[ "$module_entry" == "$valid_module" ]]; then
+                is_valid=true
+                break
+            fi
+        done
+
+        if [[ "$is_valid" == false ]]; then
+            CONFIG_ERROR="Configuration value error: scanning.modules: invalid module identifier: $module_entry"
+            return 1
+        fi
+    done < <(jq -r '.scanning.modules[]? // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+
+    while IFS= read -r module_entry; do
+        [[ -z "$module_entry" ]] && continue
+
+        is_valid=false
+        for valid_module in "${CONFIG_VALID_MODULES[@]}"; do
+            if [[ "$module_entry" == "$valid_module" ]]; then
+                is_valid=true
+                break
+            fi
+        done
+
+        if [[ "$is_valid" == false ]]; then
+            CONFIG_ERROR="Configuration value error: scanning.exclude_modules: invalid module identifier: $module_entry"
+            return 1
+        fi
+    done < <(jq -r '.scanning.exclude_modules[]? // empty' <<<"$CONFIG_JSON" 2>/dev/null)
+
+    # --- Reporting conflict ---
+    no_report=$(jq -r '.reporting.no_report // false' <<<"$CONFIG_JSON" 2>/dev/null)
+    formats_count=$(jq -r '.reporting.formats // [] | length' <<<"$CONFIG_JSON" 2>/dev/null)
+
+    if [[ "$no_report" == "true" && "$formats_count" -gt 0 ]]; then
+        CONFIG_ERROR="Configuration value error: reporting.no_report: cannot be combined with non-empty reporting.formats"
+        return 1
+    fi
+
+    # --- Format normalization ---
+    if [[ "$formats_count" -gt 0 ]]; then
+        if ! normalized_json=$(jq -c '
+            .reporting.formats |= map(ascii_upcase)
+        ' <<<"$CONFIG_JSON" 2>/dev/null); then
+            CONFIG_ERROR="Configuration value error: unable to normalize reporting.formats"
+            return 1
+        fi
+
+        CONFIG_JSON="$normalized_json"
+    fi
+
+    return 0
 }

@@ -360,6 +360,39 @@ cli_validate_scan_selection() {
     return 0
 }
 
+# Emit the canonical list of valid reconnaissance module identifiers.
+# One identifier per line. Used by both CLI validation and configuration
+# validation so the list is defined in exactly one place.
+_cli_valid_modules() {
+    cat <<'EOF'
+host
+dns
+port
+service
+os
+ssh
+ftp
+http
+https
+smb
+telnet
+http-probe
+subdomain
+crawl
+technology
+cms
+waf
+directory
+file
+vhost
+endpoint
+http-analysis
+tls
+resources
+historical-urls
+EOF
+}
+
 # Validate module selection and module identifiers.
 cli_validate_modules() {
 
@@ -367,33 +400,12 @@ cli_validate_modules() {
     local valid_module
     local is_valid
 
-    local -a valid_modules=(
-        host
-        dns
-        port
-        service
-        os
-        ssh
-        ftp
-        http
-        https
-        smb
-        telnet
-        http-probe
-        subdomain
-        crawl
-        technology
-        cms
-        waf
-        directory
-        file
-        vhost
-        endpoint
-        http-analysis
-        tls
-        resources
-        historical-urls
-    )
+    local -a valid_modules=()
+    local module_id
+
+    while IFS= read -r module_id; do
+        valid_modules+=("$module_id")
+    done < <(_cli_valid_modules)
 
     # Reject custom module selection with network or web scan modes.
     if [[ ${#CLI_MODULES[@]} -gt 0 ]]; then

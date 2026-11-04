@@ -14,6 +14,14 @@ readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)" || exit 1
 readonly PROJECT_ROOT
 
+# Load the CLI component (provides _cli_valid_modules, a shared
+# dependency of configuration value validation).
+# shellcheck source=core/cli.sh
+if ! source "$PROJECT_ROOT/core/cli.sh"; then
+    printf 'Error: Unable to load CLI component.\n' >&2
+    exit 1
+fi
+
 # Load the configuration component.
 # shellcheck source=core/config.sh
 if ! source "$PROJECT_ROOT/core/config.sh"; then
@@ -564,12 +572,319 @@ JSON
     CONFIG_ERROR=""
 }
 
-# Run UT-01 through UT-06.
+# UT-07: Configuration value validation tests.
+test_config_values() {
+
+    printf '\n%s\n' "UT-07: Configuration Value Validation"
+
+    local valid_full valid_wordlist no_wordlist bad_wordlist
+    local bad_timeout bad_timeout_neg bad_threads bad_rate_limit
+    local good_retries bad_retries
+    local good_modules bad_modules bad_exclude
+    local norm_formats conflict_no_report_no_formats conflict_no_report_with_formats
+    local no_conflict
+
+    valid_full="$TEST_ROOT/values-valid-full.json"
+    valid_wordlist="$TEST_ROOT/values-valid-wordlist.json"
+    no_wordlist="$TEST_ROOT/values-no-wordlist.json"
+    bad_wordlist="$TEST_ROOT/values-bad-wordlist.json"
+    bad_timeout="$TEST_ROOT/values-bad-timeout.json"
+    bad_timeout_neg="$TEST_ROOT/values-bad-timeout-neg.json"
+    bad_threads="$TEST_ROOT/values-bad-threads.json"
+    bad_rate_limit="$TEST_ROOT/values-bad-rate-limit.json"
+    good_retries="$TEST_ROOT/values-good-retries.json"
+    bad_retries="$TEST_ROOT/values-bad-retries.json"
+    good_modules="$TEST_ROOT/values-good-modules.json"
+    bad_modules="$TEST_ROOT/values-bad-modules.json"
+    bad_exclude="$TEST_ROOT/values-bad-exclude.json"
+    norm_formats="$TEST_ROOT/values-norm-formats.json"
+    conflict_no_report_no_formats="$TEST_ROOT/values-conflict-no-report-empty.json"
+    conflict_no_report_with_formats="$TEST_ROOT/values-conflict-no-report-formats.json"
+    no_conflict="$TEST_ROOT/values-no-conflict.json"
+
+    # A wordlist file that exists and is readable.
+    printf '%s\n' 'common' 'admin' > "$TEST_ROOT/words.txt"
+
+    cat > "$valid_full" <<JSON
+{
+  "schema_version": 1,
+  "execution": {"timeout": 300, "threads": 10, "rate_limit": 5, "retries": 2},
+  "scanning": {"modules": [], "exclude_modules": [], "wordlist": ""},
+  "reporting": {"formats": ["JSON"], "no_report": false}
+}
+JSON
+
+    cat > "$valid_wordlist" <<JSON
+{
+  "schema_version": 1,
+  "scanning": {"wordlist": "$TEST_ROOT/words.txt"}
+}
+JSON
+
+    cat > "$no_wordlist" <<'JSON'
+{"schema_version": 1, "scanning": {"wordlist": ""}}
+JSON
+
+    cat > "$bad_wordlist" <<'JSON'
+{"schema_version": 1, "scanning": {"wordlist": "/does/not/exist.txt"}}
+JSON
+
+    cat > "$bad_timeout" <<'JSON'
+{"schema_version": 1, "execution": {"timeout": 0}}
+JSON
+
+    cat > "$bad_timeout_neg" <<'JSON'
+{"schema_version": 1, "execution": {"timeout": -5}}
+JSON
+
+    cat > "$bad_threads" <<'JSON'
+{"schema_version": 1, "execution": {"threads": 0}}
+JSON
+
+    cat > "$bad_rate_limit" <<'JSON'
+{"schema_version": 1, "execution": {"rate_limit": 0}}
+JSON
+
+    cat > "$good_retries" <<'JSON'
+{"schema_version": 1, "execution": {"retries": 0}}
+JSON
+
+    cat > "$bad_retries" <<'JSON'
+{"schema_version": 1, "execution": {"retries": -1}}
+JSON
+
+    cat > "$good_modules" <<'JSON'
+{"schema_version": 1, "scanning": {"modules": ["host", "dns", "http-probe"]}}
+JSON
+
+    cat > "$bad_modules" <<'JSON'
+{"schema_version": 1, "scanning": {"modules": ["host", "bogus"]}}
+JSON
+
+    cat > "$bad_exclude" <<'JSON'
+{"schema_version": 1, "scanning": {"exclude_modules": ["bogus"]}}
+JSON
+
+    cat > "$norm_formats" <<'JSON'
+{"schema_version": 1, "reporting": {"formats": ["json", "Md"]}}
+JSON
+
+    cat > "$conflict_no_report_no_formats" <<'JSON'
+{"schema_version": 1, "reporting": {"no_report": true, "formats": []}}
+JSON
+
+    cat > "$conflict_no_report_with_formats" <<'JSON'
+{"schema_version": 1, "reporting": {"no_report": true, "formats": ["JSON"]}}
+JSON
+
+    cat > "$no_conflict" <<'JSON'
+{"schema_version": 1, "reporting": {"no_report": false, "formats": ["JSON"]}}
+JSON
+
+    # Test 1: Full valid config is accepted.
+    config_init
+    CONFIG_FILE="$valid_full"
+
+    if config_load; then
+        pass "Values: full valid config accepted"
+    else
+        fail "Values: full valid config accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 2: timeout 0 is rejected.
+    config_init
+    CONFIG_FILE="$bad_timeout"
+
+    if config_load; then
+        fail "Values: timeout 0 rejected"
+    elif [[ "$CONFIG_ERROR" == *"execution.timeout: must be at least 1"* ]]; then
+        pass "Values: timeout 0 rejected"
+    else
+        fail "Values: timeout 0 rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 3: negative timeout is rejected.
+    config_init
+    CONFIG_FILE="$bad_timeout_neg"
+
+    if config_load; then
+        fail "Values: negative timeout rejected"
+    elif [[ "$CONFIG_ERROR" == *"execution.timeout: must be at least 1"* ]]; then
+        pass "Values: negative timeout rejected"
+    else
+        fail "Values: negative timeout rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 4: threads 0 is rejected.
+    config_init
+    CONFIG_FILE="$bad_threads"
+
+    if config_load; then
+        fail "Values: threads 0 rejected"
+    elif [[ "$CONFIG_ERROR" == *"execution.threads: must be at least 1"* ]]; then
+        pass "Values: threads 0 rejected"
+    else
+        fail "Values: threads 0 rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 5: rate_limit 0 is rejected.
+    config_init
+    CONFIG_FILE="$bad_rate_limit"
+
+    if config_load; then
+        fail "Values: rate_limit 0 rejected"
+    elif [[ "$CONFIG_ERROR" == *"execution.rate_limit: must be at least 1"* ]]; then
+        pass "Values: rate_limit 0 rejected"
+    else
+        fail "Values: rate_limit 0 rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 6: retries 0 is accepted.
+    config_init
+    CONFIG_FILE="$good_retries"
+
+    if config_load; then
+        pass "Values: retries 0 accepted"
+    else
+        fail "Values: retries 0 accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 7: negative retries is rejected.
+    config_init
+    CONFIG_FILE="$bad_retries"
+
+    if config_load; then
+        fail "Values: negative retries rejected"
+    elif [[ "$CONFIG_ERROR" == *"execution.retries: must be at least 0"* ]]; then
+        pass "Values: negative retries rejected"
+    else
+        fail "Values: negative retries rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 8: missing wordlist file is rejected.
+    config_init
+    CONFIG_FILE="$bad_wordlist"
+
+    if config_load; then
+        fail "Values: missing wordlist rejected"
+    elif [[ "$CONFIG_ERROR" == *"scanning.wordlist: file does not exist"* ]]; then
+        pass "Values: missing wordlist rejected"
+    else
+        fail "Values: missing wordlist rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 9: empty wordlist is accepted.
+    config_init
+    CONFIG_FILE="$no_wordlist"
+
+    if config_load; then
+        pass "Values: empty wordlist accepted"
+    else
+        fail "Values: empty wordlist accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 10: readable wordlist is accepted.
+    config_init
+    CONFIG_FILE="$valid_wordlist"
+
+    if config_load; then
+        pass "Values: readable wordlist accepted"
+    else
+        fail "Values: readable wordlist accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 11: valid modules are accepted.
+    config_init
+    CONFIG_FILE="$good_modules"
+
+    if config_load; then
+        pass "Values: valid modules accepted"
+    else
+        fail "Values: valid modules accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 12: invalid module is rejected.
+    config_init
+    CONFIG_FILE="$bad_modules"
+
+    if config_load; then
+        fail "Values: invalid module rejected"
+    elif [[ "$CONFIG_ERROR" == *"scanning.modules: invalid module identifier: bogus"* ]]; then
+        pass "Values: invalid module rejected"
+    else
+        fail "Values: invalid module rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 13: invalid excluded module is rejected.
+    config_init
+    CONFIG_FILE="$bad_exclude"
+
+    if config_load; then
+        fail "Values: invalid excluded module rejected"
+    elif [[ "$CONFIG_ERROR" == *"scanning.exclude_modules: invalid module identifier: bogus"* ]]; then
+        pass "Values: invalid excluded module rejected"
+    else
+        fail "Values: invalid excluded module rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 14: formats are normalized to uppercase in stored config.
+    config_init
+    CONFIG_FILE="$norm_formats"
+
+    if config_load; then
+        if [[ "$CONFIG_JSON" == *'"JSON"'* && "$CONFIG_JSON" == *'"MD"'* && \
+              "$CONFIG_JSON" != *'"json"'* && "$CONFIG_JSON" != *'"Md"'* ]]; then
+            pass "Values: formats normalized to uppercase"
+        else
+            fail "Values: formats normalized to uppercase (stored: $CONFIG_JSON)"
+        fi
+    else
+        fail "Values: formats normalized to uppercase (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 15: no_report with non-empty formats is rejected.
+    config_init
+    CONFIG_FILE="$conflict_no_report_with_formats"
+
+    if config_load; then
+        fail "Values: no_report+formats conflict rejected"
+    elif [[ "$CONFIG_ERROR" == *"reporting.no_report: cannot be combined"* ]]; then
+        pass "Values: no_report+formats conflict rejected"
+    else
+        fail "Values: no_report+formats conflict rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 16: no_report with empty formats is accepted.
+    config_init
+    CONFIG_FILE="$conflict_no_report_no_formats"
+
+    if config_load; then
+        pass "Values: no_report with empty formats accepted"
+    else
+        fail "Values: no_report with empty formats accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 17: no_report false with formats is accepted.
+    config_init
+    CONFIG_FILE="$no_conflict"
+
+    if config_load; then
+        pass "Values: no_report false with formats accepted"
+    else
+        fail "Values: no_report false with formats accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    CONFIG_FILE=""
+    CONFIG_ERROR=""
+}
+
+# Run UT-01 through UT-07.
 test_config_initialization
 test_config_dependencies
 test_config_file_validation
 test_config_loading
 test_config_optional_loading
 test_config_schema_validation
+test_config_values
 
 test_summary
