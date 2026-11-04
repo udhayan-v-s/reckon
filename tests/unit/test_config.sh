@@ -303,11 +303,273 @@ test_config_optional_loading() {
     fi
 }
 
-# Run UT-01 through UT-05.
+# UT-06: Configuration schema validation tests.
+test_config_schema_validation() {
+
+    printf '\n%s\n' "UT-06: Configuration Schema Validation"
+
+    local valid_minimal valid_full
+    local bad_no_version bad_version bad_unknown_root
+    local bad_unknown_nested bad_section_type
+    local bad_output_type bad_color_enum
+    local bad_modules_type bad_modules_elem
+    local bad_timeout_type
+    local bad_format_enum bad_no_report_type bad_logfile_type
+    local case_format
+
+    valid_minimal="$TEST_ROOT/schema-valid-minimal.json"
+    valid_full="$TEST_ROOT/schema-valid-full.json"
+
+    bad_no_version="$TEST_ROOT/schema-bad-no-version.json"
+    bad_version="$TEST_ROOT/schema-bad-version.json"
+    bad_unknown_root="$TEST_ROOT/schema-bad-unknown-root.json"
+    bad_unknown_nested="$TEST_ROOT/schema-bad-unknown-nested.json"
+    bad_section_type="$TEST_ROOT/schema-bad-section-type.json"
+    bad_output_type="$TEST_ROOT/schema-bad-output-type.json"
+    bad_color_enum="$TEST_ROOT/schema-bad-color-enum.json"
+    bad_modules_type="$TEST_ROOT/schema-bad-modules-type.json"
+    bad_modules_elem="$TEST_ROOT/schema-bad-modules-elem.json"
+    bad_timeout_type="$TEST_ROOT/schema-bad-timeout-type.json"
+    bad_format_enum="$TEST_ROOT/schema-bad-format-enum.json"
+    bad_no_report_type="$TEST_ROOT/schema-bad-no-report-type.json"
+    bad_logfile_type="$TEST_ROOT/schema-bad-logfile-type.json"
+    case_format="$TEST_ROOT/schema-case-format.json"
+
+    printf '%s\n' '{"schema_version":1}' > "$valid_minimal"
+
+    cat > "$valid_full" <<'JSON'
+{
+  "schema_version": 1,
+  "general": {"output_dir": "results", "color": "auto"},
+  "scanning": {"modules": [], "exclude_modules": [], "profile": "", "ports": "", "wordlist": ""},
+  "execution": {"timeout": 300, "threads": 10, "rate_limit": 5, "retries": 2},
+  "reporting": {"formats": ["JSON", "MD"], "no_report": false, "log_file": ""}
+}
+JSON
+
+    printf '%s\n' '{}' > "$bad_no_version"
+    printf '%s\n' '{"schema_version":2}' > "$bad_version"
+    printf '%s\n' '{"schema_version":1,"bogus":{}}' > "$bad_unknown_root"
+    printf '%s\n' '{"schema_version":1,"general":{"bogus":1}}' > "$bad_unknown_nested"
+    printf '%s\n' '{"schema_version":1,"general":[]}' > "$bad_section_type"
+    printf '%s\n' '{"schema_version":1,"general":{"output_dir":5}}' > "$bad_output_type"
+    printf '%s\n' '{"schema_version":1,"general":{"color":"purple"}}' > "$bad_color_enum"
+    printf '%s\n' '{"schema_version":1,"scanning":{"modules":"x"}}' > "$bad_modules_type"
+    printf '%s\n' '{"schema_version":1,"scanning":{"modules":[1]}}' > "$bad_modules_elem"
+    printf '%s\n' '{"schema_version":1,"execution":{"timeout":1.5}}' > "$bad_timeout_type"
+    printf '%s\n' '{"schema_version":1,"reporting":{"formats":["PDF"]}}' > "$bad_format_enum"
+    printf '%s\n' '{"schema_version":1,"reporting":{"no_report":"yes"}}' > "$bad_no_report_type"
+    printf '%s\n' '{"schema_version":1,"reporting":{"log_file":5}}' > "$bad_logfile_type"
+    printf '%s\n' '{"schema_version":1,"reporting":{"formats":["json","Md"]}}' > "$case_format"
+
+    # Test 1: Valid minimal configuration is accepted.
+    config_init
+    CONFIG_FILE="$valid_minimal"
+
+    if config_load; then
+        if [[ "$CONFIG_LOADED" == true && "$CONFIG_ERROR" == "" ]]; then
+            pass "Schema: valid minimal configuration accepted"
+        else
+            fail "Schema: valid minimal configuration accepted (incorrect state)"
+        fi
+    else
+        fail "Schema: valid minimal configuration accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 2: Valid full configuration is accepted.
+    config_init
+    CONFIG_FILE="$valid_full"
+
+    if config_load; then
+        if [[ "$CONFIG_LOADED" == true && "$CONFIG_ERROR" == "" ]]; then
+            pass "Schema: valid full configuration accepted"
+        else
+            fail "Schema: valid full configuration accepted (incorrect state)"
+        fi
+    else
+        fail "Schema: valid full configuration accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    # Test 3: Missing schema_version is rejected.
+    config_init
+    CONFIG_FILE="$bad_no_version"
+
+    if config_load; then
+        fail "Schema: missing schema_version rejected"
+    elif [[ "$CONFIG_LOADED" == false && "$CONFIG_ERROR" == *"schema_version: missing"* ]]; then
+        pass "Schema: missing schema_version rejected"
+    else
+        fail "Schema: missing schema_version rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 4: Unsupported schema version is rejected.
+    config_init
+    CONFIG_FILE="$bad_version"
+
+    if config_load; then
+        fail "Schema: unsupported schema_version rejected"
+    elif [[ "$CONFIG_ERROR" == *"schema_version: expected 1"* ]]; then
+        pass "Schema: unsupported schema_version rejected"
+    else
+        fail "Schema: unsupported schema_version rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 5: Unknown top-level key is rejected.
+    config_init
+    CONFIG_FILE="$bad_unknown_root"
+
+    if config_load; then
+        fail "Schema: unknown top-level key rejected"
+    elif [[ "$CONFIG_ERROR" == *"bogus: unknown key"* ]]; then
+        pass "Schema: unknown top-level key rejected"
+    else
+        fail "Schema: unknown top-level key rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 6: Unknown nested key is rejected.
+    config_init
+    CONFIG_FILE="$bad_unknown_nested"
+
+    if config_load; then
+        fail "Schema: unknown nested key rejected"
+    elif [[ "$CONFIG_ERROR" == *"general.bogus: unknown key"* ]]; then
+        pass "Schema: unknown nested key rejected"
+    else
+        fail "Schema: unknown nested key rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 7: Section with wrong type is rejected.
+    config_init
+    CONFIG_FILE="$bad_section_type"
+
+    if config_load; then
+        fail "Schema: section wrong type rejected"
+    elif [[ "$CONFIG_ERROR" == *"general: expected object"* ]]; then
+        pass "Schema: section wrong type rejected"
+    else
+        fail "Schema: section wrong type rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 8: output_dir wrong type is rejected.
+    config_init
+    CONFIG_FILE="$bad_output_type"
+
+    if config_load; then
+        fail "Schema: general.output_dir wrong type rejected"
+    elif [[ "$CONFIG_ERROR" == *"general.output_dir: expected string"* ]]; then
+        pass "Schema: general.output_dir wrong type rejected"
+    else
+        fail "Schema: general.output_dir wrong type rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 9: Invalid color enum is rejected.
+    config_init
+    CONFIG_FILE="$bad_color_enum"
+
+    if config_load; then
+        fail "Schema: invalid general.color rejected"
+    elif [[ "$CONFIG_ERROR" == *"general.color: expected one of"* ]]; then
+        pass "Schema: invalid general.color rejected"
+    else
+        fail "Schema: invalid general.color rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 10: modules wrong type is rejected.
+    config_init
+    CONFIG_FILE="$bad_modules_type"
+
+    if config_load; then
+        fail "Schema: scanning.modules wrong type rejected"
+    elif [[ "$CONFIG_ERROR" == *"scanning.modules: expected array"* ]]; then
+        pass "Schema: scanning.modules wrong type rejected"
+    else
+        fail "Schema: scanning.modules wrong type rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 11: modules with non-string element is rejected.
+    config_init
+    CONFIG_FILE="$bad_modules_elem"
+
+    if config_load; then
+        fail "Schema: scanning.modules non-string element rejected"
+    elif [[ "$CONFIG_ERROR" == *"scanning.modules: array elements must be strings"* ]]; then
+        pass "Schema: scanning.modules non-string element rejected"
+    else
+        fail "Schema: scanning.modules non-string element rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 12: Non-integer timeout is rejected.
+    config_init
+    CONFIG_FILE="$bad_timeout_type"
+
+    if config_load; then
+        fail "Schema: non-integer execution.timeout rejected"
+    elif [[ "$CONFIG_ERROR" == *"execution.timeout: expected integer"* ]]; then
+        pass "Schema: non-integer execution.timeout rejected"
+    else
+        fail "Schema: non-integer execution.timeout rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 13: Unsupported report format is rejected.
+    config_init
+    CONFIG_FILE="$bad_format_enum"
+
+    if config_load; then
+        fail "Schema: unsupported report format rejected"
+    elif [[ "$CONFIG_ERROR" == *"reporting.formats: unsupported format"* ]]; then
+        pass "Schema: unsupported report format rejected"
+    else
+        fail "Schema: unsupported report format rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 14: Non-boolean no_report is rejected.
+    config_init
+    CONFIG_FILE="$bad_no_report_type"
+
+    if config_load; then
+        fail "Schema: non-boolean reporting.no_report rejected"
+    elif [[ "$CONFIG_ERROR" == *"reporting.no_report: expected boolean"* ]]; then
+        pass "Schema: non-boolean reporting.no_report rejected"
+    else
+        fail "Schema: non-boolean reporting.no_report rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 15: Non-string log_file is rejected.
+    config_init
+    CONFIG_FILE="$bad_logfile_type"
+
+    if config_load; then
+        fail "Schema: non-string reporting.log_file rejected"
+    elif [[ "$CONFIG_ERROR" == *"reporting.log_file: expected string"* ]]; then
+        pass "Schema: non-string reporting.log_file rejected"
+    else
+        fail "Schema: non-string reporting.log_file rejected (incorrect error: $CONFIG_ERROR)"
+    fi
+
+    # Test 16: Case-insensitive report formats are accepted by schema.
+    config_init
+    CONFIG_FILE="$case_format"
+
+    if config_load; then
+        if [[ "$CONFIG_LOADED" == true && "$CONFIG_ERROR" == "" ]]; then
+            pass "Schema: case-insensitive report formats accepted"
+        else
+            fail "Schema: case-insensitive report formats accepted (incorrect state)"
+        fi
+    else
+        fail "Schema: case-insensitive report formats accepted (load failed: $CONFIG_ERROR)"
+    fi
+
+    CONFIG_FILE=""
+    CONFIG_ERROR=""
+}
+
+# Run UT-01 through UT-06.
 test_config_initialization
 test_config_dependencies
 test_config_file_validation
 test_config_loading
 test_config_optional_loading
+test_config_schema_validation
 
 test_summary
