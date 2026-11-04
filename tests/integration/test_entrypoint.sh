@@ -156,14 +156,17 @@ prepare_test_copy() {
 
     cp -p "$PROJECT_ROOT/core/cli.sh" "$destination/core/cli.sh" ||
         fail "Copy CLI component"
+
+    cp -p "$PROJECT_ROOT/core/config.sh" "$destination/core/config.sh" ||
+        fail "Copy configuration component"
 }
 
 printf '%s\n' "RECKON - Entry-Point Integration Tests"
 printf '%s\n' "--------------------------------------"
 
-# Test 1: Normal execution.
+# Test 1: Application starts without a configuration file.
 assert_success \
-    "Normal application execution" \
+    "Application starts without a configuration file" \
     "$PROJECT_ROOT/reckon"
 
 # Test 2: Explicit Bash execution.
@@ -273,6 +276,51 @@ assert_failure \
     2 \
     "A target is required" \
     "$PROJECT_ROOT/reckon" --network
+
+# Test 16: Valid JSON configuration is loaded through the CLI.
+VALID_CONFIG="$TEST_ROOT/valid-config.json"
+
+printf '%s\n' '{"schema_version":1}' > "$VALID_CONFIG"
+
+assert_success_output \
+    "Load valid JSON configuration through CLI" \
+    "Version: 0.1.0" \
+    "Error:" \
+    "$PROJECT_ROOT/reckon" --config "$VALID_CONFIG"
+
+# Test 17: Invalid JSON configuration is rejected.
+INVALID_CONFIG="$TEST_ROOT/invalid-config.json"
+
+printf '%s\n' '{"schema_version":1' > "$INVALID_CONFIG"
+
+assert_failure \
+    "Reject invalid JSON configuration through CLI" \
+    1 \
+    "Invalid JSON configuration file" \
+    "$PROJECT_ROOT/reckon" --config "$INVALID_CONFIG"
+
+# Test 18: Missing configuration file is rejected.
+MISSING_CONFIG="$TEST_ROOT/missing-config.json"
+
+assert_failure \
+    "Reject missing configuration file through CLI" \
+    2 \
+    "does not exist or is not a regular file" \
+    "$PROJECT_ROOT/reckon" --config "$MISSING_CONFIG"
+
+# Test 19: Help bypasses configuration loading.
+assert_success_output \
+    "Help bypasses invalid configuration loading" \
+    "Usage:" \
+    "Invalid JSON configuration file" \
+    "$PROJECT_ROOT/reckon" --config "$INVALID_CONFIG" --help
+
+# Test 20: Version bypasses configuration loading.
+assert_success_output \
+    "Version bypasses invalid configuration loading" \
+    "RECKON 0.1.0" \
+    "Invalid JSON configuration file" \
+    "$PROJECT_ROOT/reckon" --config "$INVALID_CONFIG" --version
 
 # Final summary.
 printf '%s\n' "--------------------------------------"

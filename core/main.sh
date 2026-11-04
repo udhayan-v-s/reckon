@@ -14,11 +14,19 @@ if ! source "$PROJECT_ROOT/core/cli.sh"; then
     exit 1
 fi
 
+# Load configuration management functions.
+# shellcheck source=core/config.sh
+if ! source "$PROJECT_ROOT/core/config.sh"; then
+    printf 'Error: Failed to load configuration management.\n' >&2
+    exit 1
+fi
+
 # Main application function.
 reckon_main() {
 
     local parse_status
     local validation_status
+    local config_status
 
     # Initialize CLI state.
     cli_init
@@ -49,6 +57,21 @@ reckon_main() {
     else
         validation_status=$?
         exit "$validation_status"
+    fi
+
+    # Initialize configuration state.
+    config_init
+
+    # Set the configuration file selected through the CLI.
+    CONFIG_FILE="$CLI_CONFIG"
+
+    # Load the configuration file.
+    if config_load; then
+        :
+    else
+        config_status=$?
+        printf 'Error: %s\n' "$CONFIG_ERROR" >&2
+        exit "$config_status"
     fi
 
     # Temporary application identity display.
