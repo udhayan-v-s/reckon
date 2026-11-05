@@ -352,6 +352,41 @@ assert_failure \
     "no usable targets" \
     "$PROJECT_ROOT/reckon" --network --targets-file "$EMPTY_TARGETS"
 
+# Test 23: Targets file with mixed valid/invalid lines — warnings printed,
+# execution succeeds.
+MIXED_TARGETS="$TEST_ROOT/mixed-targets.txt"
+
+cat > "$MIXED_TARGETS" <<'EOF'
+# header
+192.0.2.10
+invalid_!@#
+example.com
+EOF
+
+assert_success_output \
+    "Mixed targets file: warnings printed, execution succeeds" \
+    "Warning:" \
+    "" \
+    "$PROJECT_ROOT/reckon" --network --targets-file "$MIXED_TARGETS"
+
+# Test 24: Invalid single target rejected at prepare stage.
+assert_failure \
+    "Invalid single target rejected" \
+    2 \
+    "Target '" \
+    "$PROJECT_ROOT/reckon" --network --target "not_a_valid_target!@#"
+
+# Test 25: Config + CLI target — CLI target survives precedence and is prepared.
+PRECEDENCE_CONFIG="$TEST_ROOT/precedence-config.json"
+
+printf '%s\n' '{"schema_version":1,"execution":{"timeout":60}}' > "$PRECEDENCE_CONFIG"
+
+assert_success_output \
+    "Config + CLI target: precedence applied, target prepared" \
+    "Version: 0.1.0" \
+    "Error:" \
+    "$PROJECT_ROOT/reckon" --config "$PRECEDENCE_CONFIG" --network --target example.com
+
 # Final summary.
 printf '%s\n' "--------------------------------------"
 printf 'Tests passed: %s\n' "$PASS_COUNT"
