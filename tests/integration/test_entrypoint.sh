@@ -159,6 +159,9 @@ prepare_test_copy() {
 
     cp -p "$PROJECT_ROOT/core/config.sh" "$destination/core/config.sh" ||
         fail "Copy configuration component"
+
+    cp -p "$PROJECT_ROOT/core/targets.sh" "$destination/core/targets.sh" ||
+        fail "Copy target processing component"
 }
 
 printf '%s\n' "RECKON - Entry-Point Integration Tests"

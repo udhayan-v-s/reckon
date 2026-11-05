@@ -41,9 +41,10 @@ readonly PROJECT_ROOT
 readonly METADATA_FILE="$PROJECT_ROOT/core/metadata.sh"
 readonly MAIN_FILE="$PROJECT_ROOT/core/main.sh"
 readonly CONFIG_COMPONENT_FILE="$PROJECT_ROOT/core/config.sh"
+readonly TARGETS_COMPONENT_FILE="$PROJECT_ROOT/core/targets.sh"
 
 # Validate required application files.
-for required_file in "$METADATA_FILE" "$MAIN_FILE" "$CONFIG_COMPONENT_FILE"; do
+for required_file in "$METADATA_FILE" "$MAIN_FILE" "$CONFIG_COMPONENT_FILE" "$TARGETS_COMPONENT_FILE"; do
     if [[ ! -f "$required_file" || ! -r "$required_file" ]]; then
         printf 'Error: Required application file is missing or unreadable: %s\n' \
             "$required_file" >&2

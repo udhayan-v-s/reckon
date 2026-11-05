@@ -21,6 +21,13 @@ if ! source "$PROJECT_ROOT/core/config.sh"; then
     exit 1
 fi
 
+# Load target processing functions.
+# shellcheck source=core/targets.sh
+if ! source "$PROJECT_ROOT/core/targets.sh"; then
+    printf 'Error: Failed to load target processing.\n' >&2
+    exit 1
+fi
+
 # Main application function.
 reckon_main() {
 
@@ -81,6 +88,14 @@ reckon_main() {
         config_status=$?
         printf 'Error: %s\n' "$CONFIG_ERROR" >&2
         exit "$config_status"
+    fi
+
+    # Prepare targets.
+    if target_prepare; then
+        :
+    else
+        printf 'Error: %s\n' "$TARGET_ERROR" >&2
+        exit 2
     fi
 
     # Temporary application identity display.
