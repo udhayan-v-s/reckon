@@ -325,6 +325,33 @@ assert_success_output \
     "Invalid JSON configuration file" \
     "$PROJECT_ROOT/reckon" --config "$INVALID_CONFIG" --version
 
+# Test 21: Targets file processed through the CLI.
+TARGETS_FILE="$TEST_ROOT/targets.txt"
+
+cat > "$TARGETS_FILE" <<'EOF'
+# Test targets
+192.0.2.10
+example.com
+
+invalid_target_!@#
+EOF
+
+assert_success_output \
+    "Targets file accepted through CLI" \
+    "Version: 0.1.0" \
+    "Error:" \
+    "$PROJECT_ROOT/reckon" --network --targets-file "$TARGETS_FILE"
+
+# Test 22: Empty targets file rejected.
+EMPTY_TARGETS="$TEST_ROOT/empty-targets.txt"
+: > "$EMPTY_TARGETS"
+
+assert_failure \
+    "Empty targets file rejected through CLI" \
+    2 \
+    "no usable targets" \
+    "$PROJECT_ROOT/reckon" --network --targets-file "$EMPTY_TARGETS"
+
 # Final summary.
 printf '%s\n' "--------------------------------------"
 printf 'Tests passed: %s\n' "$PASS_COUNT"

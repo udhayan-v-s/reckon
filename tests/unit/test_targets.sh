@@ -19,8 +19,21 @@ if ! source "$PROJECT_ROOT/core/targets.sh"; then
     exit 1
 fi
 
+# Create an isolated temporary test directory.
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/reckon-targets-test.XXXXXX")" || {
+    printf 'Error: Unable to create temporary test directory.\n' >&2
+    exit 1
+}
+readonly TEST_ROOT
+
 PASS_COUNT=0
 FAIL_COUNT=0
+
+cleanup() {
+    rm -rf -- "$TEST_ROOT"
+}
+
+trap cleanup EXIT
 
 pass() { printf '[PASS] %s\n' "$1"; ((PASS_COUNT += 1)); }
 fail() { printf '[FAIL] %s\n' "$1" >&2; ((FAIL_COUNT += 1)); }
@@ -278,11 +291,169 @@ test_modes() {
     fi
 }
 
+# UT-07: Targets-file processing.
+test_target_process_file() {
+    printf '\n%s\n' "UT-07: Targets File Processing"
+
+    local tdir="$TEST_ROOT/targets"
+    mkdir -p "$tdir"
+
+    local f_valid="$tdir/valid.txt"
+    local f_mixed="$tdir/mixed.txt"
+    local f_empty="$tdir/empty.txt"
+    local f_only_comments="$tdir/comments.txt"
+    local f_dups="$tdir/dups.txt"
+    local f_unreadable="$tdir/unreadable.txt"
+    local f_inline="$tdir/inline.txt"
+
+    # Valid multi-line file.
+    cat > "$f_valid" <<'EOF'
+# Primary targets
+192.0.2.10
+192.0.2.20
+example.com
+EOF
+
+    # Mixed valid/invalid/comments/blanks.
+    cat > "$f_mixed" <<'EOF'
+# header
+
+192.0.2.10
+invalid_target_!@#
+example.com
+
+192.0.2.0/24
+2001:db8::1
+EOF
+
+    # Empty file.
+    : > "$f_empty"
+
+    # Only comments/blanks.
+    cat > "$f_only_comments" <<'EOF'
+# comment
+# another comment
+
+EOF
+
+    # Duplicate after normalization.
+    cat > "$f_dups" <<'EOF'
+EXAMPLE.com
+example.com
+Example.COM
+192.0.2.10
+192.0.2.10
+EOF
+
+    # Unreadable.
+    printf '%s\n' '192.0.2.1' > "$f_unreadable"
+    chmod 000 "$f_unreadable"
+
+    # Inline comment — rejected as invalid line.
+    cat > "$f_inline" <<'EOF'
+192.0.2.10 # comment
+EOF
+
+    # Test 1: valid multi-line file accepted.
+    target_init
+    if target_process_file "$f_valid" "network"; then
+        if [[ ${#TARGET_VALUE[@]} -eq 3 &&
+              "${TARGET_VALUE[0]}" == "192.0.2.10" &&
+              "${TARGET_VALUE[1]}" == "192.0.2.20" &&
+              "${TARGET_VALUE[2]}" == "example.com" ]]; then
+            pass "Valid multi-line targets file accepted"
+        else
+            fail "Valid multi-line targets file (values: ${TARGET_VALUE[*]})"
+        fi
+    else
+        fail "Valid multi-line targets file (error: $TARGET_ERROR)"
+    fi
+
+    # Test 2: mixed file — invalid lines skipped, warnings recorded.
+    target_init
+    if target_process_file "$f_mixed" "network"; then
+        if [[ ${#TARGET_VALUE[@]} -eq 3 ]] &&
+           [[ ${#TARGET_WARNINGS[@]} -ge 2 ]]; then
+            pass "Mixed targets file: valid kept, invalid warned"
+        else
+            fail "Mixed targets file (values=${#TARGET_VALUE[@]} warnings=${#TARGET_WARNINGS[@]})"
+        fi
+    else
+        fail "Mixed targets file (error: $TARGET_ERROR)"
+    fi
+
+    # Test 3: empty file rejected.
+    target_init
+    if target_process_file "$f_empty" "network"; then
+        fail "Empty targets file rejected"
+    elif [[ "$TARGET_ERROR" == *"no usable targets"* ]]; then
+        pass "Empty targets file rejected"
+    else
+        fail "Empty targets file rejected (error: $TARGET_ERROR)"
+    fi
+
+    # Test 4: only comments — rejected.
+    target_init
+    if target_process_file "$f_only_comments" "network"; then
+        fail "Comment-only targets file rejected"
+    elif [[ "$TARGET_ERROR" == *"no usable targets"* ]]; then
+        pass "Comment-only targets file rejected"
+    else
+        fail "Comment-only targets file rejected (error: $TARGET_ERROR)"
+    fi
+
+    # Test 5: duplicates collapse.
+    target_init
+    if target_process_file "$f_dups" "network"; then
+        if [[ ${#TARGET_VALUE[@]} -eq 2 &&
+              "${TARGET_VALUE[0]}" == "example.com" &&
+              "${TARGET_VALUE[1]}" == "192.0.2.10" ]]; then
+            pass "Duplicates collapsed after normalization"
+        else
+            fail "Duplicates collapsed (values: ${TARGET_VALUE[*]})"
+        fi
+    else
+        fail "Duplicates collapsed (error: $TARGET_ERROR)"
+    fi
+
+    # Test 6: unreadable file rejected.
+    target_init
+    if target_process_file "$f_unreadable" "network"; then
+        fail "Unreadable targets file rejected"
+    elif [[ "$TARGET_ERROR" == *"not readable"* ]]; then
+        pass "Unreadable targets file rejected"
+    else
+        fail "Unreadable targets file rejected (error: $TARGET_ERROR)"
+    fi
+    chmod 600 "$f_unreadable"
+
+    # Test 7: missing file rejected.
+    target_init
+    if target_process_file "$tdir/nonexistent.txt" "network"; then
+        fail "Missing targets file rejected"
+    elif [[ "$TARGET_ERROR" == *"does not exist"* ]]; then
+        pass "Missing targets file rejected"
+    else
+        fail "Missing targets file rejected (error: $TARGET_ERROR)"
+    fi
+
+    # Test 8: inline comment not stripped (line fails validation).
+    target_init
+    if target_process_file "$f_inline" "network"; then
+        fail "Inline comment rejected"
+    elif [[ "$TARGET_ERROR" == *"no usable targets"* ]]; then
+        pass "Inline comment not stripped (line invalid)"
+    else
+        fail "Inline comment not stripped (error: $TARGET_ERROR)"
+    fi
+}
+
 test_ipv4
 test_cidr
 test_range
 test_name
 test_url
 test_modes
+test_target_process_file
 
 test_summary

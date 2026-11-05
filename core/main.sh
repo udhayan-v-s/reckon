@@ -34,6 +34,7 @@ reckon_main() {
     local parse_status
     local validation_status
     local config_status
+    local warning
 
     # Initialize CLI state.
     cli_init
@@ -96,6 +97,13 @@ reckon_main() {
     else
         printf 'Error: %s\n' "$TARGET_ERROR" >&2
         exit 2
+    fi
+
+    # Print any target warnings collected during preparation.
+    if (( ${#TARGET_WARNINGS[@]} > 0 )); then
+        for warning in "${TARGET_WARNINGS[@]}"; do
+            printf 'Warning: %s\n' "$warning" >&2
+        done
     fi
 
     # Temporary application identity display.

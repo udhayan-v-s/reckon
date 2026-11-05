@@ -451,6 +451,108 @@ target_validate_url() {
     return 0
 }
 
+# Process a targets file per the frozen specification (section 10.6).
+#
+# Rules:
+#   - One target per line.
+#   - Blank lines ignored.
+#   - Full-line comments (# at start of trimmed line) ignored.
+#   - Whitespace trimmed from each line.
+#   - Invalid targets skipped with per-line warnings.
+#   - Duplicates skipped (post-normalization).
+#   - Inline comments NOT supported (a line with "#" mid-line is treated
+#     as-is and will typically fail validation).
+#
+# Arguments:
+#   $1 - path to targets file
+#   $2 - scan mode ("network", "web", or "both")
+#
+# On success:
+#   TARGET_VALUE, TARGET_TYPE, TARGET_MODE extended.
+#   TARGET_WARNINGS receives per-line messages (line numbers + reason).
+#   returns 0 (even if some lines were skipped, as long as ≥1 usable target).
+#
+# On failure:
+#   TARGET_ERROR = reason
+#   returns 1
+target_process_file() {
+
+    local file="$1"
+    local scan_mode="$2"
+    local line
+    local line_number=0
+    local trimmed
+    local valid_count=0
+    local existing
+    local duplicate
+    local idx
+
+    # File must exist and be readable.
+    if [[ ! -f "$file" ]]; then
+        TARGET_ERROR="targets file does not exist or is not a regular file: $file"
+        return 1
+    fi
+
+    if [[ ! -r "$file" ]]; then
+        TARGET_ERROR="targets file is not readable: $file"
+        return 1
+    fi
+
+    # Read the file line by line.
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        ((line_number++))
+
+        # Trim leading and trailing whitespace.
+        trimmed="$line"
+        trimmed="${trimmed#"${trimmed%%[![:space:]]*}"}"
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+
+        # Skip blank lines.
+        if [[ -z "$trimmed" ]]; then
+            continue
+        fi
+
+        # Skip full-line comments.
+        if [[ "$trimmed" == "#"* ]]; then
+            continue
+        fi
+
+        # Validate the line.
+        if ! target_validate "$trimmed" "$scan_mode"; then
+            TARGET_WARNINGS+=("$file:$line_number: $TARGET_ERROR (input: $trimmed)")
+            continue
+        fi
+
+        # Check for duplicate after normalization.
+        duplicate=false
+        for idx in "${!TARGET_VALUE[@]}"; do
+            if [[ "${TARGET_VALUE[$idx]}" == "$TARGET_VALIDATED_VALUE" ]]; then
+                duplicate=true
+                break
+            fi
+        done
+
+        if [[ "$duplicate" == true ]]; then
+            # Silent skip; duplicate of an already-accepted target.
+            continue
+        fi
+
+        TARGET_VALUE+=("$TARGET_VALIDATED_VALUE")
+        TARGET_TYPE+=("$TARGET_VALIDATED_TYPE")
+        TARGET_MODE+=("$TARGET_VALIDATED_MODE")
+
+        ((valid_count++))
+    done < "$file"
+
+    # Require at least one usable target.
+    if (( valid_count == 0 )); then
+        TARGET_ERROR="targets file contains no usable targets: $file"
+        return 1
+    fi
+
+    return 0
+}
+
 # Prepare the target-processing pipeline. Called from core/main.sh
 # after config_apply_cli. Populates TARGET_VALUE, TARGET_TYPE, TARGET_MODE.
 #
@@ -496,14 +598,13 @@ target_prepare() {
         return 0
     fi
 
-    # Targets-file path is M3.10. For now, if a targets file was supplied,
-    # delegate to the (not yet implemented) handler.
+    # Targets-file path.
     if [[ -n "$CONFIG_EFFECTIVE_TARGETS_FILE" ]]; then
-        TARGET_ERROR="targets-file processing is not yet implemented (M3.10)"
-        return 1
-    fi
+        if ! target_process_file "$CONFIG_EFFECTIVE_TARGETS_FILE" "$scan_mode"; then
+            return 1
+        fi
 
-    # No target source and no scan mode — nothing to do.
-    TARGET_PREPARED=true
-    return 0
+        TARGET_PREPARED=true
+        return 0
+    fi
 }
