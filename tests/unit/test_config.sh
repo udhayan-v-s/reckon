@@ -125,6 +125,10 @@ test_config_initialization() {
           "$CONFIG_EFFECTIVE_RETRIES" == "" &&
           "$CONFIG_EFFECTIVE_NO_REPORT" == "" &&
           "$CONFIG_EFFECTIVE_LOG_FILE" == "" &&
+          "$CONFIG_EFFECTIVE_TARGET" == "" &&
+          "$CONFIG_EFFECTIVE_TARGETS_FILE" == "" &&
+          "$CONFIG_EFFECTIVE_NETWORK" == false &&
+          "$CONFIG_EFFECTIVE_WEB" == false &&
           ${#CONFIG_EFFECTIVE_MODULES[@]} -eq 0 &&
           ${#CONFIG_EFFECTIVE_EXCLUDE_MODULES[@]} -eq 0 &&
           ${#CONFIG_EFFECTIVE_FORMATS[@]} -eq 0 ]]; then
@@ -994,7 +998,227 @@ JSON
     CONFIG_ERROR=""
 }
 
-# Run UT-01 through UT-08.
+# UT-09: CLI/config/default precedence tests.
+test_config_apply_cli() {
+
+    printf '\n%s\n' "UT-09: CLI/Config/Default Precedence"
+
+    # A config file that sets non-default values.
+    local cfg="$TEST_ROOT/apply-cli-config.json"
+    cat > "$cfg" <<'JSON'
+{
+  "schema_version": 1,
+  "general": {"output_dir": "from-config", "color": "always"},
+  "scanning": {"modules": ["port"], "exclude_modules": ["ftp"], "profile": "full", "ports": "1-1000", "wordlist": ""},
+  "execution": {"timeout": 60, "threads": 4, "rate_limit": 2, "retries": 2},
+  "reporting": {"formats": ["MD"], "no_report": false, "log_file": "/tmp/from-config.log"}
+}
+JSON
+
+    # Test 1: No CLI supplied — effective values from config.
+    config_init
+    cli_init
+    CONFIG_FILE="$cfg"
+    if config_load; then :; else fail "Test setup: config_load failed: $CONFIG_ERROR"; fi
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_TIMEOUT" == "60" &&
+          "$CONFIG_EFFECTIVE_OUTPUT_DIR" == "from-config" &&
+          "$CONFIG_EFFECTIVE_COLOR" == "always" ]]; then
+        pass "No CLI: config values preserved"
+    else
+        fail "No CLI: config values preserved (timeout=$CONFIG_EFFECTIVE_TIMEOUT output_dir=$CONFIG_EFFECTIVE_OUTPUT_DIR color=$CONFIG_EFFECTIVE_COLOR)"
+    fi
+
+    # Test 2: CLI --timeout 300 explicitly overrides config timeout 60.
+    config_init
+    cli_init
+    cli_parse_args --timeout 300 || fail "Test setup: parse --timeout"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_TIMEOUT" == "300" ]]; then
+        pass "CLI timeout explicitly overrides config"
+    else
+        fail "CLI timeout explicitly overrides config (got: $CONFIG_EFFECTIVE_TIMEOUT)"
+    fi
+
+    # Test 3: CLI --retries 0 explicitly overrides config retries 2 (explicit tracking catches zero).
+    config_init
+    cli_init
+    cli_parse_args --retries 0 || fail "Test setup: parse --retries 0"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_RETRIES" == "0" ]]; then
+        pass "CLI retries 0 explicitly overrides config (zero is real value)"
+    else
+        fail "CLI retries 0 explicitly overrides config (got: $CONFIG_EFFECTIVE_RETRIES)"
+    fi
+
+    # Test 4: CLI --output custom/ overrides config output_dir.
+    config_init
+    cli_init
+    cli_parse_args --output custom/ || fail "Test setup: parse --output"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_OUTPUT_DIR" == "custom/" ]]; then
+        pass "CLI output_dir overrides config"
+    else
+        fail "CLI output_dir overrides config (got: $CONFIG_EFFECTIVE_OUTPUT_DIR)"
+    fi
+
+    # Test 5: CLI --color overrides config color.
+    config_init
+    cli_init
+    cli_parse_args --color || fail "Test setup: parse --color"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_COLOR" == "always" ]]; then
+        pass "CLI color overrides config"
+    else
+        fail "CLI color overrides config (got: $CONFIG_EFFECTIVE_COLOR)"
+    fi
+
+    # Test 6: CLI --module host,dns replaces config modules [port] (array replacement, not merge).
+    config_init
+    cli_init
+    cli_parse_args --module host,dns || fail "Test setup: parse --module"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ ${#CONFIG_EFFECTIVE_MODULES[@]} -eq 2 &&
+          "${CONFIG_EFFECTIVE_MODULES[0]}" == "host" &&
+          "${CONFIG_EFFECTIVE_MODULES[1]}" == "dns" ]]; then
+        pass "CLI modules array replaces config modules (no merge)"
+    else
+        fail "CLI modules array replaces config modules (got: ${CONFIG_EFFECTIVE_MODULES[*]})"
+    fi
+
+    # Test 7: CLI --exclude replaces config exclude_modules.
+    config_init
+    cli_init
+    cli_parse_args --exclude ssh,telnet || fail "Test setup: parse --exclude"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ ${#CONFIG_EFFECTIVE_EXCLUDE_MODULES[@]} -eq 2 &&
+          "${CONFIG_EFFECTIVE_EXCLUDE_MODULES[0]}" == "ssh" &&
+          "${CONFIG_EFFECTIVE_EXCLUDE_MODULES[1]}" == "telnet" ]]; then
+        pass "CLI exclude_modules array replaces config"
+    else
+        fail "CLI exclude_modules array replaces config (got: ${CONFIG_EFFECTIVE_EXCLUDE_MODULES[*]})"
+    fi
+
+    # Test 8: CLI --format JSON replaces config formats [MD].
+    config_init
+    cli_init
+    cli_parse_args --format JSON || fail "Test setup: parse --format"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ ${#CONFIG_EFFECTIVE_FORMATS[@]} -eq 1 &&
+          "${CONFIG_EFFECTIVE_FORMATS[0]}" == "JSON" ]]; then
+        pass "CLI formats array replaces config formats"
+    else
+        fail "CLI formats array replaces config formats (got: ${CONFIG_EFFECTIVE_FORMATS[*]})"
+    fi
+
+    # Test 9: CLI --no-report overrides config no_report false.
+    config_init
+    cli_init
+    cli_parse_args --no-report || fail "Test setup: parse --no-report"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_NO_REPORT" == "true" ]]; then
+        pass "CLI no_report overrides config"
+    else
+        fail "CLI no_report overrides config (got: $CONFIG_EFFECTIVE_NO_REPORT)"
+    fi
+
+    # Test 10: CLI --profile overrides config profile.
+    config_init
+    cli_init
+    cli_parse_args --profile quick || fail "Test setup: parse --profile"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_PROFILE" == "quick" ]]; then
+        pass "CLI profile overrides config"
+    else
+        fail "CLI profile overrides config (got: $CONFIG_EFFECTIVE_PROFILE)"
+    fi
+
+    # Test 11: CLI --target sets effective target.
+    config_init
+    cli_init
+    cli_parse_args --target example.com || fail "Test setup: parse --target"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_TARGET" == "example.com" ]]; then
+        pass "CLI target sets effective target"
+    else
+        fail "CLI target sets effective target (got: $CONFIG_EFFECTIVE_TARGET)"
+    fi
+
+    # Test 12: CLI --network sets effective network.
+    config_init
+    cli_init
+    cli_parse_args --network || fail "Test setup: parse --network"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_NETWORK" == "true" ]]; then
+        pass "CLI --network sets effective network"
+    else
+        fail "CLI --network sets effective network (got: $CONFIG_EFFECTIVE_NETWORK)"
+    fi
+
+    # Test 13: CLI --ports overrides config ports.
+    config_init
+    cli_init
+    cli_parse_args --ports 22,80,443 || fail "Test setup: parse --ports"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_PORTS" == "22,80,443" ]]; then
+        pass "CLI ports overrides config"
+    else
+        fail "CLI ports overrides config (got: $CONFIG_EFFECTIVE_PORTS)"
+    fi
+
+    # Test 14: CLI --log-file overrides config log_file.
+    config_init
+    cli_init
+    cli_parse_args --log-file /tmp/cli.log || fail "Test setup: parse --log-file"
+    CONFIG_FILE="$cfg"
+    config_load || fail "Test setup: config_load: $CONFIG_ERROR"
+    config_apply_cli
+
+    if [[ "$CONFIG_EFFECTIVE_LOG_FILE" == "/tmp/cli.log" ]]; then
+        pass "CLI log_file overrides config"
+    else
+        fail "CLI log_file overrides config (got: $CONFIG_EFFECTIVE_LOG_FILE)"
+    fi
+}
+
+# Run UT-01 through UT-09.
 test_config_initialization
 test_config_dependencies
 test_config_file_validation
@@ -1003,5 +1227,6 @@ test_config_optional_loading
 test_config_schema_validation
 test_config_values
 test_config_apply
+test_config_apply_cli
 
 test_summary

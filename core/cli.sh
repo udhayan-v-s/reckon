@@ -11,6 +11,11 @@
 # Initialize command-line interface state.
 cli_init() {
 
+    # Explicit-supply tracking. Consumed by config_apply_cli.
+    # shellcheck disable=SC2034
+    declare -gA CLI_EXPLICIT
+    CLI_EXPLICIT=()
+
     # Target options.
     CLI_TARGET=""
     CLI_TARGETS_FILE=""
@@ -68,6 +73,7 @@ cli_parse_args() {
             --color)
 
                 CLI_COLOR_MODE="always"
+                CLI_EXPLICIT[color]=true
                 shift
                 ;;
 
@@ -75,6 +81,7 @@ cli_parse_args() {
             --no-color)
 
                 CLI_COLOR_MODE="never"
+                CLI_EXPLICIT[color]=true
                 shift
                 ;;
 
@@ -114,6 +121,7 @@ cli_parse_args() {
                 fi
 
                 CLI_TARGET="$2"
+                CLI_EXPLICIT[target]=true
                 shift 2
                 ;;
 
@@ -125,6 +133,7 @@ cli_parse_args() {
                 fi
 
                 CLI_TARGETS_FILE="$2"
+                CLI_EXPLICIT[targets_file]=true
                 shift 2
                 ;;
 
@@ -138,6 +147,7 @@ cli_parse_args() {
                 if ! cli_append_unique_csv CLI_MODULES "$2"; then
                     return 2
                 fi
+                CLI_EXPLICIT[modules]=true
 
                 shift 2
                 ;;
@@ -152,6 +162,7 @@ cli_parse_args() {
                 if ! cli_append_unique_csv CLI_EXCLUDE_MODULES "$2"; then
                     return 2
                 fi
+                CLI_EXPLICIT[exclude_modules]=true
 
                 shift 2
                 ;;
@@ -164,6 +175,7 @@ cli_parse_args() {
                 fi
 
                 CLI_PROFILE="$2"
+                CLI_EXPLICIT[profile]=true
                 shift 2
                 ;;
 
@@ -199,6 +211,7 @@ cli_parse_args() {
                 fi
 
                 CLI_PORTS="$2"
+                CLI_EXPLICIT[ports]=true
                 shift 2
                 ;;
 
@@ -210,6 +223,7 @@ cli_parse_args() {
                 fi
 
                 CLI_WORDLIST="$2"
+                CLI_EXPLICIT[wordlist]=true
                 shift 2
                 ;;
 
@@ -232,6 +246,7 @@ cli_parse_args() {
                 fi
 
                 CLI_THREADS="$2"
+                CLI_EXPLICIT[threads]=true
                 shift 2
                 ;;
 
@@ -243,6 +258,7 @@ cli_parse_args() {
                 fi
 
                 CLI_TIMEOUT="$2"
+                CLI_EXPLICIT[timeout]=true
                 shift 2
                 ;;   
 
@@ -254,6 +270,7 @@ cli_parse_args() {
                 fi
 
                 CLI_RATE_LIMIT="$2"
+                CLI_EXPLICIT[rate_limit]=true
                 shift 2
                 ;;
 
@@ -265,6 +282,7 @@ cli_parse_args() {
                 fi
 
                 CLI_RETRIES="$2"
+                CLI_EXPLICIT[retries]=true
                 shift 2
                 ;;
 
@@ -276,6 +294,7 @@ cli_parse_args() {
                 fi
 
                 CLI_OUTPUT_DIR="$2"
+                CLI_EXPLICIT[output_dir]=true
                 shift 2
                 ;;
 
@@ -289,6 +308,7 @@ cli_parse_args() {
                 if ! cli_append_unique_csv CLI_FORMATS "$2"; then
                     return 2
                 fi
+                CLI_EXPLICIT[formats]=true
 
                 shift 2
                 ;;
@@ -297,6 +317,7 @@ cli_parse_args() {
             --no-report)
 
                 CLI_NO_REPORT=true
+                CLI_EXPLICIT[no_report]=true
                 shift
                 ;;
 
@@ -308,6 +329,7 @@ cli_parse_args() {
                 fi
 
                 CLI_LOG_FILE="$2"
+                CLI_EXPLICIT[log_file]=true
                 shift 2
                 ;;
 

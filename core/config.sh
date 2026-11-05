@@ -32,6 +32,10 @@ config_init() {
     CONFIG_EFFECTIVE_FORMATS=()
     CONFIG_EFFECTIVE_NO_REPORT=""
     CONFIG_EFFECTIVE_LOG_FILE=""
+    CONFIG_EFFECTIVE_TARGET=""
+    CONFIG_EFFECTIVE_TARGETS_FILE=""
+    CONFIG_EFFECTIVE_NETWORK=false
+    CONFIG_EFFECTIVE_WEB=false
 
     return 0
 }
@@ -620,6 +624,108 @@ config_apply() {
     value=$(jq -r '.reporting.log_file // empty' <<<"$CONFIG_JSON" 2>/dev/null)
     if [[ -n "$value" ]]; then
         CONFIG_EFFECTIVE_LOG_FILE="$value"
+    fi
+
+    return 0
+}
+
+# Overlay CLI-supplied values onto the effective configuration state.
+# Must be called after config_apply, which populates the effective state
+# from the config file (or from schema defaults). CLI values replace
+# config/default values for options that were explicitly supplied.
+#
+# Array precedence: a supplied CLI array REPLACES the corresponding
+# effective array; it does not merge with the config array.
+config_apply_cli() {
+
+    local entry
+
+    # --- target / targets_file ---
+    if [[ -n "${CLI_EXPLICIT[target]+x}" ]]; then
+        CONFIG_EFFECTIVE_TARGET="$CLI_TARGET"
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[targets_file]+x}" ]]; then
+        CONFIG_EFFECTIVE_TARGETS_FILE="$CLI_TARGETS_FILE"
+    fi
+
+    # --- scan selection flags ---
+    if [[ "$CLI_NETWORK" == true ]]; then
+        CONFIG_EFFECTIVE_NETWORK=true
+    fi
+
+    if [[ "$CLI_WEB" == true ]]; then
+        CONFIG_EFFECTIVE_WEB=true
+    fi
+
+    # --- module arrays (replace, not merge) ---
+    if [[ -n "${CLI_EXPLICIT[modules]+x}" ]]; then
+        CONFIG_EFFECTIVE_MODULES=()
+        for entry in "${CLI_MODULES[@]}"; do
+            CONFIG_EFFECTIVE_MODULES+=("$entry")
+        done
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[exclude_modules]+x}" ]]; then
+        CONFIG_EFFECTIVE_EXCLUDE_MODULES=()
+        for entry in "${CLI_EXCLUDE_MODULES[@]}"; do
+            CONFIG_EFFECTIVE_EXCLUDE_MODULES+=("$entry")
+        done
+    fi
+
+    # --- profile / ports / wordlist ---
+    if [[ -n "${CLI_EXPLICIT[profile]+x}" ]]; then
+        CONFIG_EFFECTIVE_PROFILE="$CLI_PROFILE"
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[ports]+x}" ]]; then
+        CONFIG_EFFECTIVE_PORTS="$CLI_PORTS"
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[wordlist]+x}" ]]; then
+        CONFIG_EFFECTIVE_WORDLIST="$CLI_WORDLIST"
+    fi
+
+    # --- execution numeric options ---
+    if [[ -n "${CLI_EXPLICIT[timeout]+x}" ]]; then
+        CONFIG_EFFECTIVE_TIMEOUT="$CLI_TIMEOUT"
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[threads]+x}" ]]; then
+        CONFIG_EFFECTIVE_THREADS="$CLI_THREADS"
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[rate_limit]+x}" ]]; then
+        CONFIG_EFFECTIVE_RATE_LIMIT="$CLI_RATE_LIMIT"
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[retries]+x}" ]]; then
+        CONFIG_EFFECTIVE_RETRIES="$CLI_RETRIES"
+    fi
+
+    # --- output / reporting ---
+    if [[ -n "${CLI_EXPLICIT[output_dir]+x}" ]]; then
+        CONFIG_EFFECTIVE_OUTPUT_DIR="$CLI_OUTPUT_DIR"
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[formats]+x}" ]]; then
+        CONFIG_EFFECTIVE_FORMATS=()
+        for entry in "${CLI_FORMATS[@]}"; do
+            CONFIG_EFFECTIVE_FORMATS+=("$entry")
+        done
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[no_report]+x}" ]]; then
+        CONFIG_EFFECTIVE_NO_REPORT="$CLI_NO_REPORT"
+    fi
+
+    if [[ -n "${CLI_EXPLICIT[log_file]+x}" ]]; then
+        CONFIG_EFFECTIVE_LOG_FILE="$CLI_LOG_FILE"
+    fi
+
+    # --- color ---
+    if [[ -n "${CLI_EXPLICIT[color]+x}" ]]; then
+        CONFIG_EFFECTIVE_COLOR="$CLI_COLOR_MODE"
     fi
 
     return 0

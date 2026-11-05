@@ -74,6 +74,15 @@ reckon_main() {
         exit "$config_status"
     fi
 
+    # Overlay CLI-supplied options onto the effective configuration.
+    if config_apply_cli; then
+        :
+    else
+        config_status=$?
+        printf 'Error: %s\n' "$CONFIG_ERROR" >&2
+        exit "$config_status"
+    fi
+
     # Temporary application identity display.
     printf '%s\n' "$APP_NAME"
     printf 'Version: %s\n' "$APP_VERSION"
