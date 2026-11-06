@@ -59,6 +59,12 @@ if ! source "$PROJECT_ROOT/lib/exec.sh"; then
     exit 1
 fi
 
+# shellcheck source=lib/deps.sh
+if ! source "$PROJECT_ROOT/lib/deps.sh"; then
+    printf 'Error: Failed to load dependency management library.\n' >&2
+    exit 1
+fi
+
 # Main application function.
 reckon_main() {
 
@@ -125,6 +131,22 @@ reckon_main() {
     # Initialize terminal presentation and logging framework.
     term_init "$CONFIG_EFFECTIVE_COLOR"
     log_init "$CLI_VERBOSE" "$CLI_QUIET" "$CLI_DEBUG" "$CONFIG_EFFECTIVE_LOG_FILE"
+
+    # Execute environment and dependency check when requested.
+    if [[ "$CLI_CHECK" == true ]]; then
+        local check_status=0
+        deps_init
+        if (( ${#CONFIG_EFFECTIVE_MODULES[@]} > 0 )); then
+            deps_check_modules "${CONFIG_EFFECTIVE_MODULES[@]}" || true
+        else
+            deps_check_all || true
+        fi
+        deps_render_report || check_status=1
+        if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
+            _log_write_file "INFO" "Dependency check executed (exit code: $check_status)"
+        fi
+        exit "$check_status"
+    fi
 
     # Prepare targets.
     if target_prepare; then

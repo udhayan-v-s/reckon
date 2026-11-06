@@ -177,6 +177,9 @@ prepare_test_copy() {
 
     cp -p "$PROJECT_ROOT/lib/exec.sh" "$destination/lib/exec.sh" ||
         fail "Copy exec library component"
+
+    cp -p "$PROJECT_ROOT/lib/deps.sh" "$destination/lib/deps.sh" ||
+        fail "Copy deps library component"
 }
 
 printf '%s\n' "RECKON - Entry-Point Integration Tests"
@@ -439,6 +442,50 @@ if [[ -f "$AUDIT_LOG" ]]; then
     pass "Audit log file was created during execution"
 else
     fail "Audit log file was not created"
+fi
+
+# Test 30: Missing deps library component detected.
+MISSING_DEPS="$TEST_ROOT/missing-deps"
+prepare_test_copy "$MISSING_DEPS"
+
+rm -- "$MISSING_DEPS/lib/deps.sh"
+
+assert_failure \
+    "Detect missing deps library component" \
+    1 \
+    "deps.sh" \
+    "$MISSING_DEPS/reckon"
+
+# Test 31: CLI --check executes cleanly without target.
+CHECK_OUTPUT="$("$PROJECT_ROOT/reckon" --check 2>&1 || true)"
+if [[ "$CHECK_OUTPUT" == *"RECKON - Dependency Status"* && \
+      "$CHECK_OUTPUT" == *"Summary: 19 total inspected"* ]]; then
+    pass "CLI --check executes without requiring a scan target"
+else
+    fail "CLI --check output missing expected dependency status header"
+fi
+
+# Test 32: CLI --check with satisfied module (dns).
+assert_success_output \
+    "CLI --check succeeds for satisfied module dependencies" \
+    "All required external dependencies are satisfied." \
+    "[MISSING]" \
+    "$PROJECT_ROOT/reckon" --check --module dns
+
+# Test 33: CLI --check with missing module dependencies exits with status 1.
+assert_failure \
+    "CLI --check returns status 1 when dependencies are missing" \
+    1 \
+    "[MISSING]" \
+    "$PROJECT_ROOT/reckon" --check --module crawl
+
+# Test 34: CLI --check records audit log entry when log file is configured.
+CHECK_AUDIT_LOG="$TEST_ROOT/check_audit.log"
+"$PROJECT_ROOT/reckon" --check --module dns --log-file "$CHECK_AUDIT_LOG" >/dev/null 2>&1 || true
+if [[ -f "$CHECK_AUDIT_LOG" ]] && grep -q "Dependency check executed" "$CHECK_AUDIT_LOG"; then
+    pass "CLI --check records dependency check entry in log file"
+else
+    fail "CLI --check failed to write audit record to log file"
 fi
 
 # Final summary.
