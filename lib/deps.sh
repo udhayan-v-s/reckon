@@ -375,3 +375,120 @@ deps_check_all() {
     DEPS_CHECKED_MODULES=("${_DEPS_ALL_MODULES[@]}")
     deps_check_tools "${_DEPS_ALL_TOOLS[@]}"
 }
+
+# Render a structured terminal report of dependency inspection results.
+#
+# Arguments:
+#   $1 - optional report title/scope override
+#
+# Returns:
+#   0 if all checked dependencies are available, 1 if any are missing
+deps_render_report() {
+    local custom_scope="${1:-}"
+    local tool
+    local desc
+    local badge
+    local total_count
+    local avail_count
+    local missing_count
+    local scope_text
+    local -a all_inspected=()
+
+    avail_count=${#DEPS_AVAILABLE_TOOLS[@]}
+    missing_count=${#DEPS_MISSING_TOOLS[@]}
+    total_count=$(( avail_count + missing_count ))
+
+    if (( total_count == 0 )); then
+        printf 'No dependency inspection has been performed.\n'
+        return 1
+    fi
+
+    # Determine scope description.
+    if [[ -n "$custom_scope" ]]; then
+        scope_text="$custom_scope"
+    elif (( ${#DEPS_CHECKED_MODULES[@]} == 25 )); then
+        scope_text="All Modules (25 modules)"
+    elif (( ${#DEPS_CHECKED_MODULES[@]} > 0 )); then
+        local IFS=', '
+        scope_text="Modules: ${DEPS_CHECKED_MODULES[*]} (${#DEPS_CHECKED_MODULES[@]} modules)"
+    else
+        scope_text="Direct tool inspection ($total_count tools)"
+    fi
+
+    # Collect and sort all inspected tool names alphabetically using pure Bash.
+    all_inspected=("${DEPS_AVAILABLE_TOOLS[@]}" "${DEPS_MISSING_TOOLS[@]}")
+    local -a sorted_tools=("${all_inspected[@]}")
+    local i j temp
+    local n=${#sorted_tools[@]}
+    for ((i = 0; i < n; i++)); do
+        for ((j = i + 1; j < n; j++)); do
+            if [[ "${sorted_tools[i]}" > "${sorted_tools[j]}" ]]; then
+                temp="${sorted_tools[i]}"
+                sorted_tools[i]="${sorted_tools[j]}"
+                sorted_tools[j]="$temp"
+            fi
+        done
+    done
+
+    # Header
+    printf '%s\n' "================================================================================"
+    if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+        printf '%s - Dependency Status\n' "$(term_bold "RECKON")"
+    else
+        printf 'RECKON - Dependency Status\n'
+    fi
+    printf 'Scope: %s\n' "$scope_text"
+    printf '%s\n' "================================================================================"
+
+    # Table rows
+    for tool in "${sorted_tools[@]}"; do
+        desc="$(deps_get_tool_desc "$tool")"
+
+        # Check if available or missing
+        local is_avail=false
+        local t
+        for t in "${DEPS_AVAILABLE_TOOLS[@]}"; do
+            if [[ "$t" == "$tool" ]]; then
+                is_avail=true
+                break
+            fi
+        done
+
+        if [[ "$is_avail" == true ]]; then
+            if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                badge="$(term_green "[FOUND]  ")"
+            else
+                badge="[FOUND]  "
+            fi
+        else
+            if declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                badge="$(term_red "[MISSING]")"
+            else
+                badge="[MISSING]"
+            fi
+        fi
+
+        printf '  %s  %-15s %s\n' "$badge" "$tool" "$desc"
+    done
+
+    # Footer summary
+    printf '%s\n' "--------------------------------------------------------------------------------"
+    printf 'Summary: %d total inspected | %d available | %d missing\n' \
+        "$total_count" "$avail_count" "$missing_count"
+
+    if (( missing_count == 0 )); then
+        if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+            printf '%s\n' "$(term_green "All required external dependencies are satisfied.")"
+        else
+            printf 'All required external dependencies are satisfied.\n'
+        fi
+        return 0
+    else
+        if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+            printf '%s\n' "$(term_yellow "Warning: ${missing_count} required tool(s) are missing from PATH.")"
+        else
+            printf 'Warning: %d required tool(s) are missing from PATH.\n' "$missing_count"
+        fi
+        return 1
+    fi
+}

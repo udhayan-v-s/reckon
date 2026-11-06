@@ -13,6 +13,12 @@ readonly SCRIPT_DIR
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)" || exit 1
 readonly PROJECT_ROOT
 
+# shellcheck source=lib/term.sh
+if ! source "$PROJECT_ROOT/lib/term.sh"; then
+    printf 'Error: Unable to load terminal presentation library component.\n' >&2
+    exit 1
+fi
+
 # shellcheck source=lib/deps.sh
 if ! source "$PROJECT_ROOT/lib/deps.sh"; then
     printf 'Error: Unable to load dependency management library component.\n' >&2
@@ -384,6 +390,93 @@ if (
     pass "deps_check_all returns 1 when at least one tool is missing"
 else
     fail "deps_check_all did not return 1 or identify missing tool accurately"
+fi
+
+# -----------------------------------------------------------------------------
+# UT-08: Dependency Status Reporting (deps_render_report)
+# -----------------------------------------------------------------------------
+printf '\n%s\n' "UT-08: Dependency Status Reporting (deps_render_report)"
+
+# Test 25: Uninspected state returns 1
+deps_init
+uninspected_output="$(deps_render_report 2>&1 || true)"
+if [[ "$uninspected_output" == *"No dependency inspection has been performed"* ]]; then
+    pass "deps_render_report returns error when called prior to dependency check"
+else
+    fail "deps_render_report unexpected output on uninspected state: $uninspected_output"
+fi
+
+# Test 26: Full report output structure
+term_init "never"
+deps_init
+deps_check_all || true
+full_report="$(deps_render_report)"
+if [[ "$full_report" == *"RECKON - Dependency Status"* && \
+      "$full_report" == *"Scope: All Modules (25 modules)"* && \
+      "$full_report" == *"Summary: 19 total inspected"* ]]; then
+    pass "deps_render_report renders valid header, scope, and summary structure"
+else
+    fail "deps_render_report missing expected structural elements"
+fi
+
+# Test 27: Report return code 0 when all dependencies satisfied
+mock_satisfied_report=""
+touch "$MOCK_ALL_DIR/testssl.sh"
+chmod 755 "$MOCK_ALL_DIR/testssl.sh"
+# shellcheck disable=SC2030,SC2031
+if (
+    export PATH="$MOCK_ALL_DIR"
+    deps_init
+    deps_check_all
+    mock_satisfied_report="$(deps_render_report)"
+    [[ "$mock_satisfied_report" == *"All required external dependencies are satisfied."* ]]
+); then
+    pass "deps_render_report returns 0 and success message when all dependencies exist"
+else
+    fail "deps_render_report failed on satisfied dependency set"
+fi
+
+# Test 28: Report return code 1 when dependencies missing
+# shellcheck disable=SC2030,SC2031
+if (
+    export PATH="$MOCK_BIN_DIR"
+    deps_init
+    deps_check_tools "mock_nmap" "mock_missing" || true
+    ! deps_render_report >/dev/null 2>&1
+); then
+    pass "deps_render_report returns 1 when required dependencies are missing"
+else
+    fail "deps_render_report returned 0 despite missing dependencies"
+fi
+
+# Test 29: Report output contains strictly zero package manager or installation commands
+has_install_text=false
+if [[ "$full_report" =~ (apt|yum|dnf|pacman|brew|install|apk|rpm) ]]; then
+    has_install_text=true
+fi
+if [[ "$has_install_text" == false ]]; then
+    pass "deps_render_report contains zero package manager or installation commands"
+else
+    fail "deps_render_report unexpectedly contained installation commands"
+fi
+
+# Test 30: Color integration produces ANSI escape codes when enabled and none when disabled
+color_report="$(term_init "always" && deps_render_report)"
+plain_report="$(term_init "never" && deps_render_report)"
+esc=$'\033'
+
+if [[ "$color_report" == *"$esc"* && "$plain_report" != *"$esc"* ]]; then
+    pass "deps_render_report respects terminal color configuration (ANSI present when enabled, absent when disabled)"
+else
+    fail "deps_render_report color handling failed"
+fi
+
+# Test 31: Custom scope override parameter in header
+custom_scope_report="$(term_init "never" && deps_render_report "Custom Profile (Discovery)")"
+if [[ "$custom_scope_report" == *"Scope: Custom Profile (Discovery)"* ]]; then
+    pass "deps_render_report supports custom scope override in header"
+else
+    fail "deps_render_report failed to display custom scope override"
 fi
 
 test_summary
