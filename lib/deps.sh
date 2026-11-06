@@ -164,6 +164,15 @@ deps_get_tool_desc() {
         gau)
             printf '%s\n' "Fetch known URLs from AlienVault, Wayback Machine, and Common Crawl"
             ;;
+        feroxbuster)
+            printf '%s\n' "Fast, simple, recursive content discovery tool"
+            ;;
+        amass)
+            printf '%s\n' "In-depth attack surface mapping and asset discovery tool"
+            ;;
+        host)
+            printf '%s\n' "DNS lookup utility for resolving hostnames to IP addresses"
+            ;;
         *)
             printf '%s\n' "External reconnaissance utility"
             ;;
@@ -213,23 +222,26 @@ deps_get_module_tools() {
         dns)
             printf '%s\n' "dig"
             ;;
-        port|service|os|ftp)
+        port|service|os)
             printf '%s\n' "nmap"
             ;;
         ssh)
-            printf '%s\n' "ssh-keyscan" "ssh-audit"
+            printf '%s\n' "nmap" "ssh-keyscan" "ssh-audit"
             ;;
-        http|resources|http-analysis)
-            printf '%s\n' "curl"
+        ftp)
+            printf '%s\n' "nmap" "nc"
+            ;;
+        http)
+            printf '%s\n' "nmap" "curl"
             ;;
         https)
-            printf '%s\n' "curl" "openssl"
+            printf '%s\n' "nmap" "curl" "openssl" "testssl.sh"
             ;;
         smb)
-            printf '%s\n' "smbclient" "enum4linux-ng"
+            printf '%s\n' "nmap" "smbclient" "enum4linux-ng"
             ;;
         telnet)
-            printf '%s\n' "nc"
+            printf '%s\n' "nmap" "nc"
             ;;
         http-probe)
             printf '%s\n' "httpx"
@@ -251,6 +263,9 @@ deps_get_module_tools() {
             ;;
         tls)
             printf '%s\n' "testssl.sh" "openssl"
+            ;;
+        http-analysis|resources)
+            printf '%s\n' "curl"
             ;;
         historical-urls)
             printf '%s\n' "gau"
