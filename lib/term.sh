@@ -10,6 +10,12 @@
 
 set -o nounset
 
+# Include guard to prevent re-declaration of readonly constants on re-sourcing.
+if [[ -n "${_RECKON_LIB_TERM_LOADED:-}" ]]; then
+    return 0
+fi
+readonly _RECKON_LIB_TERM_LOADED=1
+
 # ANSI escape sequence constants.
 readonly TERM_CLR_RESET=$'\033[0m'
 readonly TERM_CLR_BOLD=$'\033[1m'
