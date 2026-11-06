@@ -38,13 +38,21 @@ fi
 readonly PROJECT_ROOT
 
 # Locate application components.
-readonly METADATA_FILE="$PROJECT_ROOT/core/metadata.sh"
-readonly MAIN_FILE="$PROJECT_ROOT/core/main.sh"
-readonly CONFIG_COMPONENT_FILE="$PROJECT_ROOT/core/config.sh"
-readonly TARGETS_COMPONENT_FILE="$PROJECT_ROOT/core/targets.sh"
+readonly REQUIRED_COMPONENTS=(
+    "$PROJECT_ROOT/core/metadata.sh"
+    "$PROJECT_ROOT/core/main.sh"
+    "$PROJECT_ROOT/core/cli.sh"
+    "$PROJECT_ROOT/core/config.sh"
+    "$PROJECT_ROOT/core/targets.sh"
+    "$PROJECT_ROOT/lib/term.sh"
+    "$PROJECT_ROOT/lib/log.sh"
+    "$PROJECT_ROOT/lib/fs.sh"
+    "$PROJECT_ROOT/lib/common.sh"
+    "$PROJECT_ROOT/lib/exec.sh"
+)
 
 # Validate required application files.
-for required_file in "$METADATA_FILE" "$MAIN_FILE" "$CONFIG_COMPONENT_FILE" "$TARGETS_COMPONENT_FILE"; do
+for required_file in "${REQUIRED_COMPONENTS[@]}"; do
     if [[ ! -f "$required_file" || ! -r "$required_file" ]]; then
         printf 'Error: Required application file is missing or unreadable: %s\n' \
             "$required_file" >&2
@@ -54,14 +62,14 @@ done
 
 # Load application metadata.
 # shellcheck source=core/metadata.sh
-if ! source "$METADATA_FILE"; then
+if ! source "$PROJECT_ROOT/core/metadata.sh"; then
     printf 'Error: Failed to load application metadata.\n' >&2
     exit 1
 fi
 
 # Load the main application component.
 # shellcheck source=core/main.sh
-if ! source "$MAIN_FILE"; then
+if ! source "$PROJECT_ROOT/core/main.sh"; then
     printf 'Error: Failed to load the main application component.\n' >&2
     exit 1
 fi

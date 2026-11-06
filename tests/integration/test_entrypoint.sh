@@ -143,7 +143,7 @@ run_from_directory() {
 prepare_test_copy() {
     local destination="$1"
 
-    mkdir -p "$destination/core" || fail "Create test directory"
+    mkdir -p "$destination/core" "$destination/lib" || fail "Create test directory"
 
     cp -p "$PROJECT_ROOT/reckon" "$destination/reckon" ||
         fail "Copy application launcher"
@@ -162,6 +162,21 @@ prepare_test_copy() {
 
     cp -p "$PROJECT_ROOT/core/targets.sh" "$destination/core/targets.sh" ||
         fail "Copy target processing component"
+
+    cp -p "$PROJECT_ROOT/lib/term.sh" "$destination/lib/term.sh" ||
+        fail "Copy term library component"
+
+    cp -p "$PROJECT_ROOT/lib/log.sh" "$destination/lib/log.sh" ||
+        fail "Copy log library component"
+
+    cp -p "$PROJECT_ROOT/lib/fs.sh" "$destination/lib/fs.sh" ||
+        fail "Copy fs library component"
+
+    cp -p "$PROJECT_ROOT/lib/common.sh" "$destination/lib/common.sh" ||
+        fail "Copy common library component"
+
+    cp -p "$PROJECT_ROOT/lib/exec.sh" "$destination/lib/exec.sh" ||
+        fail "Copy exec library component"
 }
 
 printf '%s\n' "RECKON - Entry-Point Integration Tests"
@@ -386,6 +401,45 @@ assert_success_output \
     "Version: 0.1.0" \
     "Error:" \
     "$PROJECT_ROOT/reckon" --config "$PRECEDENCE_CONFIG" --network --target example.com
+
+# Test 26: Missing CLI component detected.
+MISSING_CLI="$TEST_ROOT/missing-cli"
+prepare_test_copy "$MISSING_CLI"
+
+rm -- "$MISSING_CLI/core/cli.sh"
+
+assert_failure \
+    "Detect missing CLI component" \
+    1 \
+    "cli.sh" \
+    "$MISSING_CLI/reckon"
+
+# Test 27: Missing library component detected.
+MISSING_LIB="$TEST_ROOT/missing-lib"
+prepare_test_copy "$MISSING_LIB"
+
+rm -- "$MISSING_LIB/lib/term.sh"
+
+assert_failure \
+    "Detect missing library component" \
+    1 \
+    "term.sh" \
+    "$MISSING_LIB/reckon"
+
+# Test 28: Logging to file via --log-file option.
+AUDIT_LOG="$TEST_ROOT/pipeline_audit.log"
+
+assert_success_output \
+    "Pipeline execution initializes log file" \
+    "Version: 0.1.0" \
+    "Error:" \
+    "$PROJECT_ROOT/reckon" --network --target 192.0.2.10 --log-file "$AUDIT_LOG"
+
+if [[ -f "$AUDIT_LOG" ]]; then
+    pass "Audit log file was created during execution"
+else
+    fail "Audit log file was not created"
+fi
 
 # Final summary.
 printf '%s\n' "--------------------------------------"

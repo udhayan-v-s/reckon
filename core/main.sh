@@ -28,6 +28,37 @@ if ! source "$PROJECT_ROOT/core/targets.sh"; then
     exit 1
 fi
 
+# Load shared libraries.
+# shellcheck source=lib/term.sh
+if ! source "$PROJECT_ROOT/lib/term.sh"; then
+    printf 'Error: Failed to load terminal presentation library.\n' >&2
+    exit 1
+fi
+
+# shellcheck source=lib/log.sh
+if ! source "$PROJECT_ROOT/lib/log.sh"; then
+    printf 'Error: Failed to load logging framework library.\n' >&2
+    exit 1
+fi
+
+# shellcheck source=lib/fs.sh
+if ! source "$PROJECT_ROOT/lib/fs.sh"; then
+    printf 'Error: Failed to load filesystem library.\n' >&2
+    exit 1
+fi
+
+# shellcheck source=lib/common.sh
+if ! source "$PROJECT_ROOT/lib/common.sh"; then
+    printf 'Error: Failed to load common utilities library.\n' >&2
+    exit 1
+fi
+
+# shellcheck source=lib/exec.sh
+if ! source "$PROJECT_ROOT/lib/exec.sh"; then
+    printf 'Error: Failed to load execution wrapper library.\n' >&2
+    exit 1
+fi
+
 # Main application function.
 reckon_main() {
 
@@ -91,6 +122,10 @@ reckon_main() {
         exit "$config_status"
     fi
 
+    # Initialize terminal presentation and logging framework.
+    term_init "$CONFIG_EFFECTIVE_COLOR"
+    log_init "$CLI_VERBOSE" "$CLI_QUIET" "$CLI_DEBUG" "$CONFIG_EFFECTIVE_LOG_FILE"
+
     # Prepare targets.
     if target_prepare; then
         :
@@ -110,6 +145,11 @@ reckon_main() {
     printf '%s\n' "$APP_NAME"
     printf 'Version: %s\n' "$APP_VERSION"
     printf '%s\n' "$APP_DESCRIPTION"
+
+    # Record initialization record to log file if configured.
+    if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
+        _log_write_file "INFO" "RECKON initialized (version: $APP_VERSION)"
+    fi
 
 }
 
