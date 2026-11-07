@@ -328,13 +328,14 @@ svc_mod_banner_grab() {
     fi
 
     local banner=""
+    local nc_bin="${RECKON_MOCK_NC_BIN:-nc}"
 
     # 1. Attempt banner acquisition via netcat if available.
-    if net_mod_has_tool "nc"; then
+    if net_mod_has_tool "$nc_bin"; then
         if [[ -n "$payload" ]]; then
-            banner=$(printf "%s\r\n" "$payload" | nc -w "$timeout" "$host" "$port" 2>/dev/null | head -n 20 || true)
+            banner=$(printf "%s\r\n" "$payload" | "$nc_bin" -w "$timeout" "$host" "$port" 2>/dev/null | head -n 20 || true)
         else
-            banner=$(nc -w "$timeout" "$host" "$port" < /dev/null 2>/dev/null | head -n 20 || true)
+            banner=$("$nc_bin" -w "$timeout" "$host" "$port" < /dev/null 2>/dev/null | head -n 20 || true)
         fi
     fi
 
