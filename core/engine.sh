@@ -711,8 +711,14 @@ _engine_dispatch_task() {
         return "$exit_code"
     fi
 
-    # 2. Check for modular script on disk (modules/<category>/<module>.sh).
+    # 2. Check for modular script on disk (modules/<category>/<module>.sh or services subfolder).
     local script_path="${PROJECT_ROOT:-.}/modules/${category}/${mod}.sh"
+    if [[ ! -f "$script_path" || ! -x "$script_path" ]]; then
+        local service_script="${PROJECT_ROOT:-.}/modules/${category}/services/${mod}.sh"
+        if [[ -f "$service_script" && -x "$service_script" ]]; then
+            script_path="$service_script"
+        fi
+    fi
     if [[ -f "$script_path" && -x "$script_path" ]]; then
         if declare -f exec_run >/dev/null 2>&1; then
             exec_run "$stdout_file" "$stderr_file" "$timeout_sec" "$script_path" "$target" "$t_type" "$task_dir"
