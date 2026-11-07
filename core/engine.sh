@@ -711,7 +711,20 @@ _engine_dispatch_task() {
         return "$exit_code"
     fi
 
-    # 2. Check for modular script on disk (modules/<category>/<module>.sh or services subfolder).
+    # 2. Check for in-memory module execution function: module_<id>_run (unit testing / mock hook).
+    local func_name="module_${mod//-/_}_run"
+    if declare -f "$func_name" >/dev/null 2>&1; then
+        if declare -f exec_run >/dev/null 2>&1 && (( timeout_sec == 0 )); then
+            exec_run "$stdout_file" "$stderr_file" 0 "$func_name" "$target" "$t_type" "$task_dir"
+            exit_code=$?
+        else
+            "$func_name" "$target" "$t_type" "$task_dir" >"$stdout_file" 2>"$stderr_file"
+            exit_code=$?
+        fi
+        return "$exit_code"
+    fi
+
+    # 3. Check for modular script on disk (modules/<category>/<module>.sh or services subfolder).
     local script_path="${PROJECT_ROOT:-.}/modules/${category}/${mod}.sh"
     if [[ ! -f "$script_path" || ! -x "$script_path" ]]; then
         local service_script="${PROJECT_ROOT:-.}/modules/${category}/services/${mod}.sh"
@@ -725,19 +738,6 @@ _engine_dispatch_task() {
             exit_code=$?
         else
             "$script_path" "$target" "$t_type" "$task_dir" >"$stdout_file" 2>"$stderr_file"
-            exit_code=$?
-        fi
-        return "$exit_code"
-    fi
-
-    # 3. Check for in-memory module execution function: module_<id>_run.
-    local func_name="module_${mod//-/_}_run"
-    if declare -f "$func_name" >/dev/null 2>&1; then
-        if declare -f exec_run >/dev/null 2>&1 && (( timeout_sec == 0 )); then
-            exec_run "$stdout_file" "$stderr_file" 0 "$func_name" "$target" "$t_type" "$task_dir"
-            exit_code=$?
-        else
-            "$func_name" "$target" "$t_type" "$task_dir" >"$stdout_file" 2>"$stderr_file"
             exit_code=$?
         fi
         return "$exit_code"
