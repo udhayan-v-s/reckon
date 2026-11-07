@@ -81,6 +81,11 @@ ENGINE_TASK_OUTPUT_DIR=()
 # Testing/mock execution hook (array representing mock command wrapper).
 ENGINE_MOCK_DISPATCH_CMD=()
 
+# Signal handling and interruption state.
+ENGINE_INTERRUPTED=false
+_ENGINE_ACTIVE_PID=""
+_ENGINE_TRAPS_INSTALLED=false
+
 # Reset the execution engine state.
 engine_init() {
     ENGINE_TOTAL_TASKS=0
@@ -98,6 +103,9 @@ engine_init() {
     ENGINE_TASK_EXIT_CODE=()
     ENGINE_TASK_OUTPUT_DIR=()
     ENGINE_MOCK_DISPATCH_CMD=()
+    ENGINE_INTERRUPTED=false
+    _ENGINE_ACTIVE_PID=""
+    _ENGINE_TRAPS_INSTALLED=false
     ENGINE_ERROR=""
 }
 
@@ -588,6 +596,80 @@ _engine_sanitize_target_dir() {
     printf '%s' "${t:-unknown_target}"
 }
 
+# Handle POSIX termination signals (SIGINT, SIGTERM) gracefully.
+#
+# Arguments:
+#   $1 - signal identifier ("INT", "TERM", "SIGINT", "SIGTERM", 2, 15)
+_engine_handle_signal() {
+    local sig="${1:-INT}"
+    ENGINE_INTERRUPTED=true
+
+    local exit_code=130
+    case "$sig" in
+        INT|SIGINT|2)
+            exit_code=130
+            ;;
+        TERM|SIGTERM|15)
+            exit_code=143
+            ;;
+        *)
+            exit_code=1
+            ;;
+    esac
+
+    local sig_display="${sig#SIG}"
+
+    # Log graceful interruption notice to user.
+    if declare -f log_warn >/dev/null 2>&1; then
+        log_warn "Scan execution interrupted by SIG${sig_display}. Terminating active tasks and cleaning up..."
+    else
+        printf 'Warning: Scan execution interrupted by SIG%s. Terminating active tasks and cleaning up...\n' "$sig_display" >&2
+    fi
+
+    # Terminate recorded active task PID if set and running.
+    if [[ -n "${_ENGINE_ACTIVE_PID:-}" ]] && kill -0 "$_ENGINE_ACTIVE_PID" 2>/dev/null; then
+        kill -TERM "$_ENGINE_ACTIVE_PID" 2>/dev/null || true
+    fi
+
+    # Terminate all child processes of the current shell or subshell.
+    if command -v pkill >/dev/null 2>&1; then
+        local current_pid="${BASHPID:-$$}"
+        pkill -P "$current_pid" 2>/dev/null || true
+    fi
+
+    # Clean up temporary files and directories tracked by filesystem library.
+    if declare -f fs_cleanup_temp >/dev/null 2>&1; then
+        fs_cleanup_temp
+    fi
+
+    # Teardown signal handlers.
+    engine_teardown_traps
+
+    exit "$exit_code"
+}
+
+# Install signal handlers for SIGINT and SIGTERM to guarantee clean teardown.
+#
+# Returns:
+#   0 on success
+engine_setup_traps() {
+    trap '_engine_handle_signal INT' INT
+    trap '_engine_handle_signal TERM' TERM
+    _ENGINE_TRAPS_INSTALLED=true
+    ENGINE_INTERRUPTED=false
+    return 0
+}
+
+# Remove signal handlers and restore default signal behavior.
+#
+# Returns:
+#   0 on success
+engine_teardown_traps() {
+    trap - INT TERM
+    _ENGINE_TRAPS_INSTALLED=false
+    return 0
+}
+
 # Dispatch a single module execution task with stdout/stderr redirection and timeout.
 #
 # Arguments:
@@ -609,6 +691,8 @@ _engine_dispatch_task() {
     local stdout_file="$5"
     local stderr_file="$6"
     local timeout_sec="$7"
+
+    _ENGINE_ACTIVE_PID=""
 
     local exit_code=0
     local category
@@ -750,8 +834,17 @@ engine_run() {
         }
     fi
 
+    # Install signal handlers during active scan execution.
+    engine_setup_traps
+
     # Sequential execution loop.
     for (( i = 0; i < ENGINE_TOTAL_TASKS; i++ )); do
+        # Break immediately if scan execution was interrupted by signal.
+        if [[ "$ENGINE_INTERRUPTED" == true ]]; then
+            overall_status=130
+            break
+        fi
+
         target="${ENGINE_PLAN_TARGETS[i]}"
         t_type="${ENGINE_PLAN_TARGET_TYPES[i]}"
         mod="${ENGINE_PLAN_MODULES[i]}"
@@ -826,6 +919,9 @@ engine_run() {
         ENGINE_TASK_EXIT_CODE+=("$exit_code")
         ENGINE_TASK_OUTPUT_DIR+=("$task_dir")
     done
+
+    # Teardown signal handlers upon execution completion.
+    engine_teardown_traps
 
     return "$overall_status"
 }

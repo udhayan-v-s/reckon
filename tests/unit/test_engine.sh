@@ -803,4 +803,147 @@ else
     fail "engine_run succeeded despite timeout"
 fi
 
+# -----------------------------------------------------------------------------
+# UT-12: Signal Handling & Graceful Interruption
+# -----------------------------------------------------------------------------
+printf '\n%s\n' "UT-12: Signal Handling & Graceful Interruption"
+
+# Test 51: Trap setup and teardown state inspection
+engine_setup_traps
+traps_active=false
+if [[ "$_ENGINE_TRAPS_INSTALLED" == true ]] && [[ "$(trap -p INT)" == *"_engine_handle_signal"* ]] && [[ "$(trap -p TERM)" == *"_engine_handle_signal"* ]]; then
+    traps_active=true
+fi
+engine_teardown_traps
+if [[ "$traps_active" == true ]] && [[ "$_ENGINE_TRAPS_INSTALLED" == false ]] && [[ -z "$(trap -p INT)" ]] && [[ -z "$(trap -p TERM)" ]]; then
+    pass "engine_setup_traps installs SIGINT/SIGTERM handlers and engine_teardown_traps restores them"
+else
+    fail "engine_setup_traps or engine_teardown_traps failed to manage signal traps properly"
+fi
+
+# Test 52: engine_init resets signal state variables
+ENGINE_INTERRUPTED=true
+_ENGINE_ACTIVE_PID="12345"
+_ENGINE_TRAPS_INSTALLED=true
+engine_init
+if [[ "$ENGINE_INTERRUPTED" == false && "$_ENGINE_ACTIVE_PID" == "" && "$_ENGINE_TRAPS_INSTALLED" == false ]]; then
+    pass "engine_init resets ENGINE_INTERRUPTED, _ENGINE_ACTIVE_PID, and _ENGINE_TRAPS_INSTALLED"
+else
+    fail "engine_init failed to reset signal state: interrupted=$ENGINE_INTERRUPTED, active_pid=$_ENGINE_ACTIVE_PID, traps=$_ENGINE_TRAPS_INSTALLED"
+fi
+
+# Test 53: Simulated SIGINT trap execution in isolated subshell
+(
+    source "$PROJECT_ROOT/core/engine.sh"
+    engine_setup_traps
+    kill -INT "$BASHPID"
+) 2>/dev/null
+sigint_exit=$?
+if (( sigint_exit == 130 )); then
+    pass "SIGINT interruption terminates process with exit code 130"
+else
+    fail "SIGINT interruption produced exit code $sigint_exit (expected 130)"
+fi
+
+# Test 54: Simulated SIGTERM trap execution in isolated subshell
+(
+    source "$PROJECT_ROOT/core/engine.sh"
+    engine_setup_traps
+    kill -TERM "$BASHPID"
+) 2>/dev/null
+sigterm_exit=$?
+if (( sigterm_exit == 143 )); then
+    pass "SIGTERM interruption terminates process with exit code 143"
+else
+    fail "SIGTERM interruption produced exit code $sigterm_exit (expected 143)"
+fi
+
+# Test 55: Graceful resource cleanup on signal interruption
+TEST_SIG_FILE="$TEST_ROOT/sig_cleanup_file.tmp"
+TEST_SIG_DIR="$TEST_ROOT/sig_cleanup_dir.tmp"
+touch "$TEST_SIG_FILE"
+mkdir -p "$TEST_SIG_DIR"
+(
+    source "$PROJECT_ROOT/core/engine.sh"
+    source "$PROJECT_ROOT/lib/fs.sh"
+    fs_track_temp "$TEST_SIG_FILE"
+    fs_track_temp "$TEST_SIG_DIR"
+    engine_setup_traps
+    kill -INT "$BASHPID"
+) 2>/dev/null
+sub_sig_exit=$?
+if (( sub_sig_exit == 130 )) && [[ ! -e "$TEST_SIG_FILE" && ! -e "$TEST_SIG_DIR" ]]; then
+    pass "Signal handler cleans up tracked temporary files and directories on interruption"
+else
+    fail "Signal handler failed to clean up temporary resources: file_exists=$(test -e "$TEST_SIG_FILE" && echo yes || echo no)"
+fi
+
+# Test 56: Child process termination on interruption
+TEST_CHILD_PID_FILE="$TEST_ROOT/sig_child_pid.txt"
+# shellcheck disable=SC2030,SC2031
+(
+    source "$PROJECT_ROOT/core/engine.sh"
+    sleep 30 &
+    child_pid=$!
+    echo "$child_pid" > "$TEST_CHILD_PID_FILE"
+    _ENGINE_ACTIVE_PID="$child_pid"
+    engine_setup_traps
+    kill -INT "$BASHPID"
+) 2>/dev/null
+child_pid_recorded="$(cat "$TEST_CHILD_PID_FILE" 2>/dev/null || echo "")"
+rm -f "$TEST_CHILD_PID_FILE"
+sleep 0.1
+if [[ -n "$child_pid_recorded" ]] && ! kill -0 "$child_pid_recorded" 2>/dev/null; then
+    pass "Signal handler terminates active child process recorded in _ENGINE_ACTIVE_PID"
+else
+    if [[ -n "$child_pid_recorded" ]]; then
+        kill -9 "$child_pid_recorded" 2>/dev/null || true
+    fi
+    fail "Signal handler failed to terminate active child process $child_pid_recorded"
+fi
+
+# Test 57: engine_run loop interruption break
+SIG_BREAK_DIR="$TEST_ROOT/scan_break"
+TARGET_VALUE=("192.0.2.1")
+TARGET_TYPE=("ipv4")
+engine_init
+engine_resolve_modules "false" "false" "host,port,service" ""
+engine_plan_scan
+
+task_exec_counter=0
+# shellcheck disable=SC2329
+module_host_run() {
+    (( task_exec_counter += 1 ))
+    ENGINE_INTERRUPTED=true
+    return 0
+}
+# shellcheck disable=SC2329
+module_port_run() {
+    (( task_exec_counter += 1 ))
+    return 0
+}
+# shellcheck disable=SC2329
+module_service_run() {
+    (( task_exec_counter += 1 ))
+    return 0
+}
+
+engine_run "false" "$SIG_BREAK_DIR" 0 0 >/dev/null 2>&1
+break_status=$?
+unset -f module_host_run module_port_run module_service_run
+
+if (( break_status == 130 && task_exec_counter == 1 )); then
+    pass "engine_run immediately aborts remaining scheduled tasks when ENGINE_INTERRUPTED is true"
+else
+    fail "engine_run loop break failed: status=$break_status, tasks_executed=$task_exec_counter (expected 1)"
+fi
+
+# Test 58: engine_run automatically tears down traps upon completion
+# shellcheck disable=SC2031
+if [[ "$_ENGINE_TRAPS_INSTALLED" == false && -z "$(trap -p INT)" && -z "$(trap -p TERM)" ]]; then
+    pass "engine_run restores default signal behavior and tears down traps upon completion"
+else
+    fail "engine_run left signal traps installed after execution finished"
+fi
+
 test_summary
