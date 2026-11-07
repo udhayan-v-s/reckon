@@ -44,6 +44,7 @@ readonly REQUIRED_COMPONENTS=(
     "$PROJECT_ROOT/core/cli.sh"
     "$PROJECT_ROOT/core/config.sh"
     "$PROJECT_ROOT/core/targets.sh"
+    "$PROJECT_ROOT/core/engine.sh"
     "$PROJECT_ROOT/lib/term.sh"
     "$PROJECT_ROOT/lib/log.sh"
     "$PROJECT_ROOT/lib/fs.sh"

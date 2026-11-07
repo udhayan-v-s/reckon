@@ -28,6 +28,13 @@ if ! source "$PROJECT_ROOT/core/targets.sh"; then
     exit 1
 fi
 
+# Load execution engine functions.
+# shellcheck source=core/engine.sh
+if ! source "$PROJECT_ROOT/core/engine.sh"; then
+    printf 'Error: Failed to load execution engine component.\n' >&2
+    exit 1
+fi
+
 # Load shared libraries.
 # shellcheck source=lib/term.sh
 if ! source "$PROJECT_ROOT/lib/term.sh"; then
@@ -163,7 +170,7 @@ reckon_main() {
         done
     fi
 
-    # Temporary application identity display.
+    # Application identity display.
     printf '%s\n' "$APP_NAME"
     printf 'Version: %s\n' "$APP_VERSION"
     printf '%s\n' "$APP_DESCRIPTION"
@@ -171,6 +178,34 @@ reckon_main() {
     # Record initialization record to log file if configured.
     if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
         _log_write_file "INFO" "RECKON initialized (version: $APP_VERSION)"
+    fi
+
+    # Execute scan workflow if targets were prepared.
+    if (( ${#TARGET_VALUE[@]} > 0 )); then
+        engine_init
+
+        if ! engine_resolve_modules; then
+            printf 'Error: %s\n' "$ENGINE_ERROR" >&2
+            exit 2
+        fi
+
+        if ! engine_plan_scan; then
+            printf 'Error: %s\n' "$ENGINE_ERROR" >&2
+            exit 2
+        fi
+
+        local scan_status=0
+        if engine_run; then
+            :
+        else
+            scan_status=$?
+        fi
+
+        if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
+            _log_write_file "INFO" "Scan execution finished (tasks: $ENGINE_TOTAL_TASKS, completed: $ENGINE_COMPLETED_TASKS, failed: $ENGINE_FAILED_TASKS, timeouts: $ENGINE_TIMEOUT_TASKS, exit code: $scan_status)"
+        fi
+
+        exit "$scan_status"
     fi
 
 }

@@ -26,6 +26,7 @@ PASS_COUNT=0
 # Clean up temporary test files.
 cleanup() {
     rm -rf -- "$TEST_ROOT"
+    rm -rf -- "$PROJECT_ROOT/results"
 }
 
 trap cleanup EXIT
@@ -162,6 +163,9 @@ prepare_test_copy() {
 
     cp -p "$PROJECT_ROOT/core/targets.sh" "$destination/core/targets.sh" ||
         fail "Copy target processing component"
+
+    cp -p "$PROJECT_ROOT/core/engine.sh" "$destination/core/engine.sh" ||
+        fail "Copy execution engine component"
 
     cp -p "$PROJECT_ROOT/lib/term.sh" "$destination/lib/term.sh" ||
         fail "Copy term library component"
@@ -487,6 +491,62 @@ if [[ -f "$CHECK_AUDIT_LOG" ]] && grep -q "Dependency check executed" "$CHECK_AU
 else
     fail "CLI --check failed to write audit record to log file"
 fi
+
+# Test 35: Detect missing engine component.
+MISSING_ENGINE="$TEST_ROOT/missing-engine"
+prepare_test_copy "$MISSING_ENGINE"
+
+rm -- "$MISSING_ENGINE/core/engine.sh"
+
+assert_failure \
+    "Detect missing engine component" \
+    1 \
+    "engine.sh" \
+    "$MISSING_ENGINE/reckon"
+
+# Test 36: CLI --dry-run displays execution plan and creates no output directory.
+DRY_RUN_OUT="$TEST_ROOT/dry_run_results"
+assert_success_output \
+    "CLI --dry-run outputs execution plan" \
+    "[DRY-RUN] Execution plan simulated" \
+    "Error:" \
+    "$PROJECT_ROOT/reckon" --network --target 192.0.2.10 --dry-run --output "$DRY_RUN_OUT"
+
+if [[ ! -d "$DRY_RUN_OUT" ]]; then
+    pass "CLI --dry-run creates no output directory or artifacts on disk"
+else
+    fail "CLI --dry-run created output directory: $DRY_RUN_OUT"
+fi
+
+# Test 37: CLI execution completes scheduled tasks and generates artifacts.
+SCAN_OUT="$TEST_ROOT/scan_results"
+assert_success_output \
+    "CLI execution completes scheduled tasks" \
+    "Module 'host' completed for target '192.0.2.10'" \
+    "Error:" \
+    "$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --output "$SCAN_OUT"
+
+if [[ -f "$SCAN_OUT/192.0.2.10/host/stdout.log" && -f "$SCAN_OUT/192.0.2.10/host/output.txt" ]]; then
+    pass "CLI execution generated module output files"
+else
+    fail "CLI execution missing expected output files in $SCAN_OUT"
+fi
+
+# Test 38: CLI execution records audit log entry when log file is configured.
+SCAN_AUDIT_LOG="$TEST_ROOT/scan_audit.log"
+"$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --log-file "$SCAN_AUDIT_LOG" --output "$TEST_ROOT/scan_log_out" >/dev/null 2>&1 || true
+if [[ -f "$SCAN_AUDIT_LOG" ]] && grep -q "Scan execution finished" "$SCAN_AUDIT_LOG"; then
+    pass "CLI execution records scan completion entry in log file"
+else
+    fail "CLI execution failed to write scan audit record to log file"
+fi
+
+# Test 39: Incompatible target and module selection rejected during planning.
+assert_failure \
+    "Reject incompatible target and module selection" \
+    2 \
+    "No compatible modules could be scheduled" \
+    "$PROJECT_ROOT/reckon" --module dns --target 192.0.2.10
 
 # Final summary.
 printf '%s\n' "--------------------------------------"

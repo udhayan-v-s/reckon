@@ -574,6 +574,8 @@ target_prepare() {
         scan_mode="network"
     elif [[ "$CONFIG_EFFECTIVE_WEB" == "true" ]]; then
         scan_mode="web"
+    elif declare -p CONFIG_EFFECTIVE_MODULES >/dev/null 2>&1 && (( ${#CONFIG_EFFECTIVE_MODULES[@]} > 0 )); then
+        scan_mode="both"
     else
         # No scan mode selected — nothing to prepare. Not an error;
         # the CLI layer already requires a target when scanning.
