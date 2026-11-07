@@ -65,6 +65,13 @@ ENGINE_FAILED_TASKS=0
 ENGINE_SKIPPED_TASKS=0
 ENGINE_TIMEOUT_TASKS=0
 
+# Execution plan and graph state arrays.
+ENGINE_RESOLVED_MODULES=()
+ENGINE_PLAN_TARGETS=()
+ENGINE_PLAN_TARGET_TYPES=()
+ENGINE_PLAN_MODULES=()
+ENGINE_SKIPPED_TASKS_INFO=()
+
 # Reset the execution engine state.
 engine_init() {
     ENGINE_TOTAL_TASKS=0
@@ -72,6 +79,11 @@ engine_init() {
     ENGINE_FAILED_TASKS=0
     ENGINE_SKIPPED_TASKS=0
     ENGINE_TIMEOUT_TASKS=0
+    ENGINE_RESOLVED_MODULES=()
+    ENGINE_PLAN_TARGETS=()
+    ENGINE_PLAN_TARGET_TYPES=()
+    ENGINE_PLAN_MODULES=()
+    ENGINE_SKIPPED_TASKS_INFO=()
     ENGINE_ERROR=""
 }
 
@@ -314,4 +326,229 @@ engine_is_module_compatible() {
     done < <(engine_get_module_target_types "$mod" 2>/dev/null || true)
 
     return 1
+}
+
+# Resolve candidate modules based on scan mode, explicit selections, and exclusions.
+#
+# Arguments:
+#   $1 - optional network mode ("true"/"false")
+#   $2 - optional web mode ("true"/"false")
+#   $3 - optional comma/space-separated list of selected modules
+#   $4 - optional comma/space-separated list of excluded modules
+#
+# If arguments are omitted, defaults to global configuration state:
+#   CONFIG_EFFECTIVE_NETWORK, CONFIG_EFFECTIVE_WEB,
+#   CONFIG_EFFECTIVE_MODULES, CONFIG_EFFECTIVE_EXCLUDE_MODULES
+#
+# Sets:
+#   ENGINE_RESOLVED_MODULES
+#
+# Returns:
+#   0 on success (at least one module resolved), 1 on error (sets ENGINE_ERROR)
+engine_resolve_modules() {
+    local net_mode="${1:-}"
+    local web_mode="${2:-}"
+    local explicit_mods_str="${3:-}"
+    local exclude_mods_str="${4:-}"
+
+    local -a candidate_modules=()
+    local -a exclude_modules=()
+    local -a resolved=()
+    local item
+    local mod
+
+    ENGINE_ERROR=""
+    ENGINE_RESOLVED_MODULES=()
+
+    # Determine explicit selected modules (parameter or global config).
+    if [[ -n "$explicit_mods_str" ]]; then
+        local IFS=', '
+        # shellcheck disable=SC2206
+        candidate_modules=($explicit_mods_str)
+    elif declare -p CONFIG_EFFECTIVE_MODULES >/dev/null 2>&1 && (( ${#CONFIG_EFFECTIVE_MODULES[@]} > 0 )); then
+        candidate_modules=("${CONFIG_EFFECTIVE_MODULES[@]}")
+    fi
+
+    # Determine excluded modules (parameter or global config).
+    if [[ -n "$exclude_mods_str" ]]; then
+        local IFS=', '
+        # shellcheck disable=SC2206
+        exclude_modules=($exclude_mods_str)
+    elif declare -p CONFIG_EFFECTIVE_EXCLUDE_MODULES >/dev/null 2>&1 && (( ${#CONFIG_EFFECTIVE_EXCLUDE_MODULES[@]} > 0 )); then
+        exclude_modules=("${CONFIG_EFFECTIVE_EXCLUDE_MODULES[@]}")
+    fi
+
+    # If no explicit modules provided, determine candidates from scan mode.
+    if (( ${#candidate_modules[@]} == 0 )); then
+        if [[ -z "$net_mode" ]] && [[ -v CONFIG_EFFECTIVE_NETWORK ]]; then
+            net_mode="$CONFIG_EFFECTIVE_NETWORK"
+        fi
+        if [[ -z "$web_mode" ]] && [[ -v CONFIG_EFFECTIVE_WEB ]]; then
+            web_mode="$CONFIG_EFFECTIVE_WEB"
+        fi
+
+        if [[ "$net_mode" == "true" && "$web_mode" == "true" ]]; then
+            candidate_modules=("${_ENGINE_ALL_MODULES[@]}")
+        elif [[ "$net_mode" == "true" ]]; then
+            candidate_modules=("${_ENGINE_NETWORK_MODULES[@]}")
+        elif [[ "$web_mode" == "true" ]]; then
+            candidate_modules=("${_ENGINE_WEB_MODULES[@]}")
+        else
+            ENGINE_ERROR="No scan mode or reconnaissance modules selected."
+            return 1
+        fi
+    fi
+
+    # Validate each candidate module and filter out exclusions and duplicates.
+    for mod in "${candidate_modules[@]}"; do
+        [[ -z "$mod" ]] && continue
+
+        if ! engine_is_valid_module "$mod"; then
+            ENGINE_ERROR="Invalid module identifier: $mod"
+            return 1
+        fi
+
+        # Check if module is in exclusion list.
+        local is_excluded=false
+        for item in "${exclude_modules[@]}"; do
+            if [[ "$item" == "$mod" ]]; then
+                is_excluded=true
+                break
+            fi
+        done
+        [[ "$is_excluded" == true ]] && continue
+
+        # Check if already added (deduplication).
+        local already_added=false
+        for item in "${resolved[@]}"; do
+            if [[ "$item" == "$mod" ]]; then
+                already_added=true
+                break
+            fi
+        done
+        [[ "$already_added" == true ]] && continue
+
+        resolved+=("$mod")
+    done
+
+    if (( ${#resolved[@]} == 0 )); then
+        ENGINE_ERROR="No modules remaining after applying exclusion filters."
+        return 1
+    fi
+
+    ENGINE_RESOLVED_MODULES=("${resolved[@]}")
+    return 0
+}
+
+# Generate the execution graph mapping targets to compatible modules.
+#
+# Reads:
+#   TARGET_VALUE, TARGET_TYPE (from core/targets.sh)
+#   ENGINE_RESOLVED_MODULES (from engine_resolve_modules)
+#
+# Populates:
+#   ENGINE_PLAN_TARGETS
+#   ENGINE_PLAN_TARGET_TYPES
+#   ENGINE_PLAN_MODULES
+#   ENGINE_SKIPPED_TASKS_INFO
+#   ENGINE_TOTAL_TASKS
+#   ENGINE_SKIPPED_TASKS
+#
+# Returns:
+#   0 on success (at least one task scheduled), 1 on error (sets ENGINE_ERROR)
+# shellcheck disable=SC2153
+engine_plan_scan() {
+    local target
+    local t_type
+    local mod
+    local i
+    local num_targets=0
+
+    ENGINE_ERROR=""
+    ENGINE_PLAN_TARGETS=()
+    ENGINE_PLAN_TARGET_TYPES=()
+    ENGINE_PLAN_MODULES=()
+    ENGINE_SKIPPED_TASKS_INFO=()
+    ENGINE_TOTAL_TASKS=0
+    ENGINE_SKIPPED_TASKS=0
+
+    # Ensure modules have been resolved.
+    if (( ${#ENGINE_RESOLVED_MODULES[@]} == 0 )); then
+        if ! engine_resolve_modules; then
+            return 1
+        fi
+    fi
+
+    # Check for targets.
+    if declare -p TARGET_VALUE >/dev/null 2>&1; then
+        num_targets=${#TARGET_VALUE[@]}
+    fi
+
+    if (( num_targets == 0 )); then
+        ENGINE_ERROR="No valid targets available for execution planning."
+        return 1
+    fi
+
+    # Build the execution graph.
+    for (( i = 0; i < num_targets; i++ )); do
+        target="${TARGET_VALUE[i]}"
+        t_type="${TARGET_TYPE[i]}"
+
+        for mod in "${ENGINE_RESOLVED_MODULES[@]}"; do
+            if engine_is_module_compatible "$mod" "$t_type"; then
+                ENGINE_PLAN_TARGETS+=("$target")
+                ENGINE_PLAN_TARGET_TYPES+=("$t_type")
+                ENGINE_PLAN_MODULES+=("$mod")
+            else
+                (( ENGINE_SKIPPED_TASKS += 1 ))
+                ENGINE_SKIPPED_TASKS_INFO+=("Target '$target' ($t_type) is incompatible with module '$mod'")
+            fi
+        done
+    done
+
+    ENGINE_TOTAL_TASKS=${#ENGINE_PLAN_MODULES[@]}
+
+    if (( ENGINE_TOTAL_TASKS == 0 )); then
+        ENGINE_ERROR="No compatible modules could be scheduled for the supplied targets."
+        return 1
+    fi
+
+    return 0
+}
+
+# Render a human-readable summary of the execution plan.
+#
+# Outputs:
+#   Formatted execution graph with task indices, targets, target types, and modules.
+engine_format_plan() {
+    local i
+    local target
+    local target_type
+    local mod
+    local mod_name
+    local category
+    local num_targets=0
+
+    if declare -p TARGET_VALUE >/dev/null 2>&1; then
+        num_targets=${#TARGET_VALUE[@]}
+    fi
+
+    if (( ENGINE_TOTAL_TASKS == 0 )); then
+        printf 'No tasks scheduled in execution plan.\n'
+        return 0
+    fi
+
+    printf 'Execution Plan (%d tasks scheduled across %d target%s):\n' \
+        "$ENGINE_TOTAL_TASKS" "$num_targets" "$( (( num_targets == 1 )) && echo "" || echo "s" )"
+
+    for (( i = 0; i < ENGINE_TOTAL_TASKS; i++ )); do
+        target="${ENGINE_PLAN_TARGETS[i]}"
+        target_type="${ENGINE_PLAN_TARGET_TYPES[i]}"
+        mod="${ENGINE_PLAN_MODULES[i]}"
+        mod_name="$(engine_get_module_name "$mod")"
+        category="$(engine_get_module_category "$mod")"
+
+        printf '  [%2d] Target: %-25s (%-10s) -> Module: %-15s (%s) [%s]\n' \
+            "$(( i + 1 ))" "$target" "$target_type" "$mod" "$mod_name" "$category"
+    done
 }

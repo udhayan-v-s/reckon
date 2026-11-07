@@ -317,4 +317,283 @@ else
     fail "engine_init failed to reset state"
 fi
 
+# -----------------------------------------------------------------------------
+# UT-06: Module Resolution (engine_resolve_modules)
+# -----------------------------------------------------------------------------
+printf '\n%s\n' "UT-06: Module Resolution (engine_resolve_modules)"
+
+# Test 22: Network mode resolves 11 network modules
+engine_init
+if engine_resolve_modules "true" "false" "" ""; then
+    if (( ${#ENGINE_RESOLVED_MODULES[@]} == 11 )) && \
+       [[ "${ENGINE_RESOLVED_MODULES[0]}" == "host" && "${ENGINE_RESOLVED_MODULES[10]}" == "telnet" ]]; then
+        pass "engine_resolve_modules resolves all 11 network modules in order"
+    else
+        fail "engine_resolve_modules network mode resolved unexpected modules: ${ENGINE_RESOLVED_MODULES[*]}"
+    fi
+else
+    fail "engine_resolve_modules failed on network mode"
+fi
+
+# Test 23: Web mode resolves 14 web modules
+engine_init
+if engine_resolve_modules "false" "true" "" ""; then
+    if (( ${#ENGINE_RESOLVED_MODULES[@]} == 14 )) && \
+       [[ "${ENGINE_RESOLVED_MODULES[0]}" == "http-probe" && "${ENGINE_RESOLVED_MODULES[13]}" == "historical-urls" ]]; then
+        pass "engine_resolve_modules resolves all 14 web modules in order"
+    else
+        fail "engine_resolve_modules web mode resolved unexpected modules: ${ENGINE_RESOLVED_MODULES[*]}"
+    fi
+else
+    fail "engine_resolve_modules failed on web mode"
+fi
+
+# Test 24: Combined network and web resolves all 25 modules
+engine_init
+if engine_resolve_modules "true" "true" "" ""; then
+    if (( ${#ENGINE_RESOLVED_MODULES[@]} == 25 )); then
+        pass "engine_resolve_modules resolves all 25 modules when both modes active"
+    else
+        fail "engine_resolve_modules combined mode count mismatch: ${#ENGINE_RESOLVED_MODULES[@]}"
+    fi
+else
+    fail "engine_resolve_modules failed on combined mode"
+fi
+
+# Test 25: Explicit modules selection
+engine_init
+if engine_resolve_modules "false" "false" "host,dns,subdomain" ""; then
+    if (( ${#ENGINE_RESOLVED_MODULES[@]} == 3 )) && \
+       [[ "${ENGINE_RESOLVED_MODULES[0]}" == "host" && "${ENGINE_RESOLVED_MODULES[1]}" == "dns" && "${ENGINE_RESOLVED_MODULES[2]}" == "subdomain" ]]; then
+        pass "engine_resolve_modules resolves explicit module selection in order"
+    else
+        fail "engine_resolve_modules explicit selection mismatch: ${ENGINE_RESOLVED_MODULES[*]}"
+    fi
+else
+    fail "engine_resolve_modules failed on explicit selection"
+fi
+
+# Test 26: Exclusion filter pruning
+engine_init
+if engine_resolve_modules "true" "false" "" "port,telnet"; then
+    contains_excluded=false
+    for m in "${ENGINE_RESOLVED_MODULES[@]}"; do
+        if [[ "$m" == "port" || "$m" == "telnet" ]]; then
+            contains_excluded=true
+            break
+        fi
+    done
+    if (( ${#ENGINE_RESOLVED_MODULES[@]} == 9 )) && [[ "$contains_excluded" == false ]]; then
+        pass "engine_resolve_modules correctly prunes excluded modules"
+    else
+        fail "engine_resolve_modules exclusion filter failed: ${ENGINE_RESOLVED_MODULES[*]}"
+    fi
+else
+    fail "engine_resolve_modules failed with exclusions"
+fi
+
+# Test 27: Deduplication of candidate modules
+engine_init
+if engine_resolve_modules "false" "false" "host,dns,host,dns" ""; then
+    if (( ${#ENGINE_RESOLVED_MODULES[@]} == 2 )); then
+        pass "engine_resolve_modules deduplicates repeated module selections"
+    else
+        fail "engine_resolve_modules failed to deduplicate: ${ENGINE_RESOLVED_MODULES[*]}"
+    fi
+else
+    fail "engine_resolve_modules failed on duplicate modules"
+fi
+
+# Test 28: Rejecting invalid module name
+engine_init
+if ! engine_resolve_modules "false" "false" "host,invalid_module_xyz" "" >/dev/null 2>&1; then
+    if [[ "$ENGINE_ERROR" == *"Invalid module identifier"* ]]; then
+        pass "engine_resolve_modules rejects invalid module identifier and records ENGINE_ERROR"
+    else
+        fail "engine_resolve_modules unexpected error: $ENGINE_ERROR"
+    fi
+else
+    fail "engine_resolve_modules accepted invalid module identifier"
+fi
+
+# Test 29: Failing when all candidate modules are excluded
+engine_init
+if ! engine_resolve_modules "false" "false" "dns" "dns" >/dev/null 2>&1; then
+    if [[ "$ENGINE_ERROR" == *"No modules remaining"* ]]; then
+        pass "engine_resolve_modules fails when all modules are excluded"
+    else
+        fail "engine_resolve_modules unexpected error on full exclusion: $ENGINE_ERROR"
+    fi
+else
+    fail "engine_resolve_modules succeeded when all modules excluded"
+fi
+
+# Test 30: Failing when no scan mode or modules are specified
+engine_init
+if ! engine_resolve_modules "false" "false" "" "" >/dev/null 2>&1; then
+    if [[ "$ENGINE_ERROR" == *"No scan mode"* ]]; then
+        pass "engine_resolve_modules fails with clear error when no mode/module specified"
+    else
+        fail "engine_resolve_modules unexpected error: $ENGINE_ERROR"
+    fi
+else
+    fail "engine_resolve_modules accepted empty scan mode"
+fi
+
+# -----------------------------------------------------------------------------
+# UT-07: Scan Planning & Execution Graph (engine_plan_scan)
+# -----------------------------------------------------------------------------
+printf '\n%s\n' "UT-07: Scan Planning & Execution Graph (engine_plan_scan)"
+
+# Test 31: Planning against single IPv4 target
+TARGET_VALUE=("192.0.2.10")
+TARGET_TYPE=("ipv4")
+engine_init
+engine_resolve_modules "true" "false" "" ""
+
+if engine_plan_scan; then
+    # In network mode, 'dns' is incompatible with raw ipv4, while other 10 network modules are compatible
+    if (( ENGINE_TOTAL_TASKS == 10 )) && (( ENGINE_SKIPPED_TASKS == 1 )); then
+        pass "engine_plan_scan schedules compatible modules for IPv4 target and skips 'dns'"
+    else
+        fail "engine_plan_scan IPv4 task count mismatch: total=$ENGINE_TOTAL_TASKS, skipped=$ENGINE_SKIPPED_TASKS"
+    fi
+else
+    fail "engine_plan_scan failed for IPv4 target"
+fi
+
+# Test 32: Planning against domain target
+TARGET_VALUE=("example.com")
+TARGET_TYPE=("domain")
+engine_init
+engine_resolve_modules "true" "false" "" ""
+
+if engine_plan_scan; then
+    # In network mode, domain target is compatible with all 11 network modules
+    if (( ENGINE_TOTAL_TASKS == 11 )) && (( ENGINE_SKIPPED_TASKS == 0 )); then
+        pass "engine_plan_scan schedules all 11 network modules for domain target"
+    else
+        fail "engine_plan_scan domain task count mismatch: total=$ENGINE_TOTAL_TASKS, skipped=$ENGINE_SKIPPED_TASKS"
+    fi
+else
+    fail "engine_plan_scan failed for domain target"
+fi
+
+# Test 33: Planning against CIDR block
+TARGET_VALUE=("192.168.1.0/24")
+TARGET_TYPE=("ipv4_cidr")
+engine_init
+engine_resolve_modules "true" "false" "" ""
+
+if engine_plan_scan; then
+    # CIDR block is only compatible with 'host' discovery in network mode; other 10 are skipped
+    if (( ENGINE_TOTAL_TASKS == 1 )) && [[ "${ENGINE_PLAN_MODULES[0]}" == "host" ]] && (( ENGINE_SKIPPED_TASKS == 10 )); then
+        pass "engine_plan_scan schedules only multi-host discovery for CIDR blocks"
+    else
+        fail "engine_plan_scan CIDR task count mismatch: total=$ENGINE_TOTAL_TASKS, skipped=$ENGINE_SKIPPED_TASKS"
+    fi
+else
+    fail "engine_plan_scan failed for CIDR target"
+fi
+
+# Test 34: Planning against HTTP URL in web mode
+TARGET_VALUE=("http://example.com")
+TARGET_TYPE=("url_http")
+engine_init
+engine_resolve_modules "false" "true" "" ""
+
+if engine_plan_scan; then
+    # url_http is compatible with 11 web modules; 3 are skipped: subdomain (needs domain), tls (needs url_https/domain), historical-urls (needs domain/hostname)
+    if (( ENGINE_TOTAL_TASKS == 11 )) && (( ENGINE_SKIPPED_TASKS == 3 )); then
+        pass "engine_plan_scan schedules web modules compatible with HTTP URL and skips subdomain/tls/historical-urls"
+    else
+        fail "engine_plan_scan HTTP URL task count mismatch: total=$ENGINE_TOTAL_TASKS, skipped=$ENGINE_SKIPPED_TASKS"
+    fi
+else
+    fail "engine_plan_scan failed for HTTP URL target"
+fi
+
+# Test 35: Planning against multiple mixed targets
+TARGET_VALUE=("192.0.2.1" "example.com")
+TARGET_TYPE=("ipv4" "domain")
+engine_init
+engine_resolve_modules "false" "false" "host,dns" ""
+
+if engine_plan_scan; then
+    # Target 1 (ipv4): host compatible (1), dns skipped (1)
+    # Target 2 (domain): host compatible (1), dns compatible (1)
+    # Total tasks: 3, Total skipped: 1
+    if (( ENGINE_TOTAL_TASKS == 3 )) && (( ENGINE_SKIPPED_TASKS == 1 )); then
+        pass "engine_plan_scan schedules execution graph across multiple mixed targets"
+    else
+        fail "engine_plan_scan mixed targets count mismatch: total=$ENGINE_TOTAL_TASKS, skipped=$ENGINE_SKIPPED_TASKS"
+    fi
+else
+    fail "engine_plan_scan failed on mixed targets"
+fi
+
+# Test 36: Failing when no targets are available
+TARGET_VALUE=()
+TARGET_TYPE=()
+engine_init
+engine_resolve_modules "true" "false" "" ""
+
+if ! engine_plan_scan >/dev/null 2>&1; then
+    if [[ "$ENGINE_ERROR" == *"No valid targets available"* ]]; then
+        pass "engine_plan_scan fails with clear error when TARGET_VALUE is empty"
+    else
+        fail "engine_plan_scan unexpected error on empty targets: $ENGINE_ERROR"
+    fi
+else
+    fail "engine_plan_scan succeeded with empty targets"
+fi
+
+# Test 37: Failing when targets are incompatible with all selected modules
+TARGET_VALUE=("192.0.2.1")
+TARGET_TYPE=("ipv4")
+engine_init
+# 'subdomain' only accepts domain
+engine_resolve_modules "false" "false" "subdomain" ""
+
+if ! engine_plan_scan >/dev/null 2>&1; then
+    if [[ "$ENGINE_ERROR" == *"No compatible modules could be scheduled"* ]]; then
+        pass "engine_plan_scan fails with clear error when all target/module pairs are incompatible"
+    else
+        fail "engine_plan_scan unexpected error: $ENGINE_ERROR"
+    fi
+else
+    fail "engine_plan_scan succeeded despite full incompatibility"
+fi
+
+# -----------------------------------------------------------------------------
+# UT-08: Plan Formatting & Summary (engine_format_plan)
+# -----------------------------------------------------------------------------
+printf '\n%s\n' "UT-08: Plan Formatting & Summary (engine_format_plan)"
+
+# Test 38: Formatted plan output structure
+TARGET_VALUE=("example.com")
+TARGET_TYPE=("domain")
+engine_init
+engine_resolve_modules "false" "false" "host,dns" ""
+engine_plan_scan
+
+formatted_plan="$(engine_format_plan)"
+if [[ "$formatted_plan" == *"Execution Plan (2 tasks scheduled across 1 target)"* && \
+      "$formatted_plan" == *"Target: example.com"* && \
+      "$formatted_plan" == *"Module: host"* && \
+      "$formatted_plan" == *"Module: dns"* ]]; then
+    pass "engine_format_plan renders structured task list with target, type, and module metadata"
+else
+    fail "engine_format_plan output missing expected elements: $formatted_plan"
+fi
+
+# Test 39: Formatting empty plan
+engine_init
+empty_plan="$(engine_format_plan)"
+if [[ "$empty_plan" == *"No tasks scheduled"* ]]; then
+    pass "engine_format_plan outputs notice when plan is empty"
+else
+    fail "engine_format_plan failed on empty plan: $empty_plan"
+fi
+
 test_summary
