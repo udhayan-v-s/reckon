@@ -143,6 +143,38 @@ net_mod_select_tool() {
     fi
 }
 
+# Resolve a functioning nmap binary path.
+# Handles environments (e.g. unprivileged containers) where /usr/bin/nmap fails
+# with EPERM (code 126) due to setcap file capabilities on /usr/lib/nmap/nmap.
+#
+# Returns:
+#   Path to resolved nmap executable, and exit code 0 if runnable
+net_mod_resolve_nmap() {
+    local candidate="${RECKON_MOCK_NMAP_BIN:-nmap}"
+    if [[ -n "${RECKON_MOCK_NMAP_BIN:-}" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+    if "$candidate" --version >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+    if [[ -f "/usr/lib/nmap/nmap" ]]; then
+        local user_nmap="${TMPDIR:-/tmp}/reckon-bin/nmap"
+        if [[ ! -x "$user_nmap" ]]; then
+            mkdir -p "${TMPDIR:-/tmp}/reckon-bin" 2>/dev/null || true
+            cp "/usr/lib/nmap/nmap" "$user_nmap" 2>/dev/null || true
+            chmod 0755 "$user_nmap" 2>/dev/null || true
+        fi
+        if "$user_nmap" --version >/dev/null 2>&1; then
+            printf '%s\n' "$user_nmap"
+            return 0
+        fi
+    fi
+    printf '%s\n' "$candidate"
+    return 1
+}
+
 # Determine if the target is an IP-based target (IPv4, CIDR, or range).
 #
 # Returns:

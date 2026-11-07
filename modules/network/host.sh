@@ -72,6 +72,11 @@ host_main() {
 
     net_mod_write_header "host" "Host Discovery"
 
+    local nmap_bin="${HOST_NMAP_BIN:-}"
+    if [[ -z "$nmap_bin" ]]; then
+        nmap_bin="$(net_mod_resolve_nmap)"
+    fi
+
     local fping_available=false
     local nmap_available=false
     local tools_used=()
@@ -79,7 +84,7 @@ host_main() {
     if net_mod_has_tool "$HOST_FPING_BIN"; then
         fping_available=true
     fi
-    if net_mod_has_tool "$HOST_NMAP_BIN"; then
+    if net_mod_has_tool "$nmap_bin"; then
         nmap_available=true
     fi
 
@@ -147,9 +152,10 @@ host_main() {
         local gnmap_file="${NET_TASK_DIR}/nmap_host.gnmap"
         local nmap_out="${NET_TASK_DIR}/nmap_host.nmap"
         local -a nmap_cmd=(
-            "$HOST_NMAP_BIN"
+            "$nmap_bin"
             "-sn"
             "-n"
+            "--system-dns"
             "--max-retries" "1"
             "-oG" "$gnmap_file"
             "-oN" "$nmap_out"
