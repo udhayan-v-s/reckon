@@ -72,6 +72,15 @@ ENGINE_PLAN_TARGET_TYPES=()
 ENGINE_PLAN_MODULES=()
 ENGINE_SKIPPED_TASKS_INFO=()
 
+# Task execution outcomes.
+ENGINE_TASK_STATUS=()
+ENGINE_TASK_DURATION=()
+ENGINE_TASK_EXIT_CODE=()
+ENGINE_TASK_OUTPUT_DIR=()
+
+# Testing/mock execution hook (array representing mock command wrapper).
+ENGINE_MOCK_DISPATCH_CMD=()
+
 # Reset the execution engine state.
 engine_init() {
     ENGINE_TOTAL_TASKS=0
@@ -84,6 +93,11 @@ engine_init() {
     ENGINE_PLAN_TARGET_TYPES=()
     ENGINE_PLAN_MODULES=()
     ENGINE_SKIPPED_TASKS_INFO=()
+    ENGINE_TASK_STATUS=()
+    ENGINE_TASK_DURATION=()
+    ENGINE_TASK_EXIT_CODE=()
+    ENGINE_TASK_OUTPUT_DIR=()
+    ENGINE_MOCK_DISPATCH_CMD=()
     ENGINE_ERROR=""
 }
 
@@ -551,4 +565,267 @@ engine_format_plan() {
         printf '  [%2d] Target: %-25s (%-10s) -> Module: %-15s (%s) [%s]\n' \
             "$(( i + 1 ))" "$target" "$target_type" "$mod" "$mod_name" "$category"
     done
+}
+
+# Convert a target value into a safe filesystem directory name.
+#
+# Arguments:
+#   $1 - raw target string
+#
+# Outputs:
+#   Sanitized alphanumeric slug
+_engine_sanitize_target_dir() {
+    local t="${1:-}"
+    # Replace : / \ and whitespace with underscores.
+    t="${t//[:\/\\ ]/_}"
+    # Condense consecutive underscores.
+    while [[ "$t" == *__* ]]; do
+        t="${t//__/_}"
+    done
+    # Strip leading and trailing underscores.
+    t="${t#_}"
+    t="${t%_}"
+    printf '%s' "${t:-unknown_target}"
+}
+
+# Dispatch a single module execution task with stdout/stderr redirection and timeout.
+#
+# Arguments:
+#   $1 - module identifier
+#   $2 - target string
+#   $3 - target type
+#   $4 - task output directory
+#   $5 - stdout destination file
+#   $6 - stderr destination file
+#   $7 - timeout in seconds (0 for unlimited)
+#
+# Returns:
+#   Exit code of the dispatched task (or 124 on timeout)
+_engine_dispatch_task() {
+    local mod="$1"
+    local target="$2"
+    local t_type="$3"
+    local task_dir="$4"
+    local stdout_file="$5"
+    local stderr_file="$6"
+    local timeout_sec="$7"
+
+    local exit_code=0
+    local category
+    category="$(engine_get_module_category "$mod")"
+
+    # 1. Custom mock dispatch command (used in automated unit testing).
+    if (( ${#ENGINE_MOCK_DISPATCH_CMD[@]} > 0 )); then
+        local -a mock_cmd=("${ENGINE_MOCK_DISPATCH_CMD[@]}" "$mod" "$target" "$t_type" "$task_dir")
+        if declare -f exec_run >/dev/null 2>&1; then
+            exec_run "$stdout_file" "$stderr_file" "$timeout_sec" "${mock_cmd[@]}"
+            exit_code=$?
+        else
+            "${mock_cmd[@]}" >"$stdout_file" 2>"$stderr_file"
+            exit_code=$?
+        fi
+        return "$exit_code"
+    fi
+
+    # 2. Check for modular script on disk (modules/<category>/<module>.sh).
+    local script_path="${PROJECT_ROOT:-.}/modules/${category}/${mod}.sh"
+    if [[ -f "$script_path" && -x "$script_path" ]]; then
+        if declare -f exec_run >/dev/null 2>&1; then
+            exec_run "$stdout_file" "$stderr_file" "$timeout_sec" "$script_path" "$target" "$t_type" "$task_dir"
+            exit_code=$?
+        else
+            "$script_path" "$target" "$t_type" "$task_dir" >"$stdout_file" 2>"$stderr_file"
+            exit_code=$?
+        fi
+        return "$exit_code"
+    fi
+
+    # 3. Check for in-memory module execution function: module_<id>_run.
+    local func_name="module_${mod//-/_}_run"
+    if declare -f "$func_name" >/dev/null 2>&1; then
+        if declare -f exec_run >/dev/null 2>&1 && (( timeout_sec == 0 )); then
+            exec_run "$stdout_file" "$stderr_file" 0 "$func_name" "$target" "$t_type" "$task_dir"
+            exit_code=$?
+        else
+            "$func_name" "$target" "$t_type" "$task_dir" >"$stdout_file" 2>"$stderr_file"
+            exit_code=$?
+        fi
+        return "$exit_code"
+    fi
+
+    # 4. Default framework stub: writes task record to output directory.
+    printf 'Module: %s\nTarget: %s\nType: %s\nStatus: STUB\n' \
+        "$mod" "$target" "$t_type" > "$task_dir/output.txt"
+    printf 'Stub execution completed for %s\n' "$mod" > "$stdout_file"
+    : > "$stderr_file"
+
+    return 0
+}
+
+# Execute the planned scan sequentially across all scheduled tasks.
+#
+# Arguments:
+#   $1 - optional dry_run flag ("true"/"false")
+#   $2 - optional base output directory path
+#   $3 - optional per-task timeout in seconds
+#   $4 - optional retries count for failed tasks
+#
+# If arguments are omitted, defaults to effective configuration:
+#   CLI_DRY_RUN, CONFIG_EFFECTIVE_OUTPUT_DIR,
+#   CONFIG_EFFECTIVE_TIMEOUT, CONFIG_EFFECTIVE_RETRIES
+#
+# Returns:
+#   0 if all tasks succeed (or in dry-run mode), 1 if any task fails or times out
+engine_run() {
+    local dry_run="${1:-}"
+    local base_out="${2:-}"
+    local timeout_sec="${3:-}"
+    local max_retries="${4:-}"
+
+    local i
+    local target
+    local t_type
+    local mod
+    local mod_name
+    local target_slug
+    local task_dir
+    local stdout_file
+    local stderr_file
+    local task_status
+    local exit_code
+    local duration
+    local start_time
+    local attempt
+    local overall_status=0
+
+    # Read defaults from global configuration if not explicitly supplied.
+    if [[ -z "$dry_run" ]] && [[ -v CLI_DRY_RUN ]]; then
+        dry_run="$CLI_DRY_RUN"
+    fi
+    if [[ -z "$base_out" ]]; then
+        base_out="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"
+    fi
+    if [[ -z "$timeout_sec" ]] && [[ -v CONFIG_EFFECTIVE_TIMEOUT ]]; then
+        timeout_sec="$CONFIG_EFFECTIVE_TIMEOUT"
+    fi
+    timeout_sec="${timeout_sec:-0}"
+    if [[ -z "$max_retries" ]] && [[ -v CONFIG_EFFECTIVE_RETRIES ]]; then
+        max_retries="$CONFIG_EFFECTIVE_RETRIES"
+    fi
+    max_retries="${max_retries:-0}"
+
+    # Ensure plan is generated.
+    if (( ENGINE_TOTAL_TASKS == 0 )); then
+        if ! engine_plan_scan; then
+            return 1
+        fi
+    fi
+
+    # Handle dry-run mode: display plan and return cleanly without executing.
+    if [[ "$dry_run" == "true" ]]; then
+        engine_format_plan
+        printf '[DRY-RUN] Execution plan simulated (%d tasks). No commands executed.\n' "$ENGINE_TOTAL_TASKS"
+        return 0
+    fi
+
+    # Clear previous execution task results.
+    ENGINE_TASK_STATUS=()
+    ENGINE_TASK_DURATION=()
+    ENGINE_TASK_EXIT_CODE=()
+    ENGINE_TASK_OUTPUT_DIR=()
+    ENGINE_COMPLETED_TASKS=0
+    ENGINE_FAILED_TASKS=0
+    ENGINE_TIMEOUT_TASKS=0
+
+    # Ensure base output directory exists.
+    if declare -f fs_ensure_dir >/dev/null 2>&1; then
+        if ! fs_ensure_dir "$base_out" 0750; then
+            ENGINE_ERROR="Failed to create or access base output directory: $base_out"
+            return 1
+        fi
+    else
+        { mkdir -p "$base_out" && chmod 0750 "$base_out"; } 2>/dev/null || {
+            ENGINE_ERROR="Failed to create or access base output directory: $base_out"
+            return 1
+        }
+    fi
+
+    # Sequential execution loop.
+    for (( i = 0; i < ENGINE_TOTAL_TASKS; i++ )); do
+        target="${ENGINE_PLAN_TARGETS[i]}"
+        t_type="${ENGINE_PLAN_TARGET_TYPES[i]}"
+        mod="${ENGINE_PLAN_MODULES[i]}"
+        mod_name="$(engine_get_module_name "$mod")"
+
+        target_slug="$(_engine_sanitize_target_dir "$target")"
+        task_dir="${base_out}/${target_slug}/${mod}"
+        stdout_file="${task_dir}/stdout.log"
+        stderr_file="${task_dir}/stderr.log"
+
+        # Create task directory.
+        if declare -f fs_ensure_dir >/dev/null 2>&1; then
+            fs_ensure_dir "$task_dir" 0750 || true
+        else
+            { mkdir -p "$task_dir" && chmod 0750 "$task_dir"; } 2>/dev/null || true
+        fi
+
+        # Log task start.
+        if declare -f log_info >/dev/null 2>&1; then
+            log_info "Executing [$(( i + 1 ))/$ENGINE_TOTAL_TASKS] $mod ($mod_name) on target '$target'..."
+        fi
+
+        start_time=$SECONDS
+        attempt=0
+        exit_code=1
+
+        # Execute task with optional retries.
+        while (( attempt <= max_retries )); do
+            _engine_dispatch_task "$mod" "$target" "$t_type" "$task_dir" "$stdout_file" "$stderr_file" "$timeout_sec"
+            exit_code=$?
+
+            # If task succeeded or timed out, do not retry.
+            if (( exit_code == 0 || exit_code == 124 )); then
+                break
+            fi
+
+            (( attempt += 1 ))
+            if (( attempt <= max_retries )); then
+                if declare -f log_warn >/dev/null 2>&1; then
+                    log_warn "Task $mod on target '$target' failed (code $exit_code). Retrying ($attempt/$max_retries)..."
+                fi
+            fi
+        done
+
+        duration=$(( SECONDS - start_time ))
+
+        # Determine task status and update metrics.
+        if (( exit_code == 0 )); then
+            task_status="COMPLETED"
+            (( ENGINE_COMPLETED_TASKS += 1 ))
+            if declare -f log_success >/dev/null 2>&1; then
+                log_success "[$(( i + 1 ))/$ENGINE_TOTAL_TASKS] Module '$mod' completed for target '$target' (${duration}s)"
+            fi
+        elif (( exit_code == 124 )); then
+            task_status="TIMEOUT"
+            (( ENGINE_TIMEOUT_TASKS += 1 ))
+            overall_status=1
+            if declare -f log_warn >/dev/null 2>&1; then
+                log_warn "[$(( i + 1 ))/$ENGINE_TOTAL_TASKS] Module '$mod' timed out after ${timeout_sec}s for target '$target'"
+            fi
+        else
+            task_status="FAILED"
+            (( ENGINE_FAILED_TASKS += 1 ))
+            overall_status=1
+            if declare -f log_error >/dev/null 2>&1; then
+                log_error "[$(( i + 1 ))/$ENGINE_TOTAL_TASKS] Module '$mod' failed with exit code $exit_code for target '$target'"
+            fi
+        fi
+
+        ENGINE_TASK_STATUS+=("$task_status")
+        ENGINE_TASK_DURATION+=("$duration")
+        ENGINE_TASK_EXIT_CODE+=("$exit_code")
+        ENGINE_TASK_OUTPUT_DIR+=("$task_dir")
+    done
+
+    return "$overall_status"
 }

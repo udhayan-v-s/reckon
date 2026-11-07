@@ -25,6 +25,30 @@ if ! source "$PROJECT_ROOT/core/cli.sh"; then
     exit 1
 fi
 
+# shellcheck source=lib/fs.sh
+if ! source "$PROJECT_ROOT/lib/fs.sh"; then
+    printf 'Error: Unable to load filesystem library component.\n' >&2
+    exit 1
+fi
+
+# shellcheck source=lib/exec.sh
+if ! source "$PROJECT_ROOT/lib/exec.sh"; then
+    printf 'Error: Unable to load execution wrapper library component.\n' >&2
+    exit 1
+fi
+
+TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/reckon-engine-test.XXXXXX")" || {
+    printf 'Error: Unable to create temporary test directory.\n' >&2
+    exit 1
+}
+readonly TEST_ROOT
+
+cleanup() {
+    rm -rf -- "$TEST_ROOT"
+}
+
+trap cleanup EXIT
+
 PASS_COUNT=0
 FAIL_COUNT=0
 
@@ -594,6 +618,189 @@ if [[ "$empty_plan" == *"No tasks scheduled"* ]]; then
     pass "engine_format_plan outputs notice when plan is empty"
 else
     fail "engine_format_plan failed on empty plan: $empty_plan"
+fi
+
+# -----------------------------------------------------------------------------
+# UT-09: Target Directory Sanitization (_engine_sanitize_target_dir)
+# -----------------------------------------------------------------------------
+printf '\n%s\n' "UT-09: Target Directory Sanitization (_engine_sanitize_target_dir)"
+
+# Test 40: Standard IP and domain
+slug_ip="$(_engine_sanitize_target_dir "192.168.1.1")"
+slug_domain="$(_engine_sanitize_target_dir "example.com")"
+if [[ "$slug_ip" == "192.168.1.1" && "$slug_domain" == "example.com" ]]; then
+    pass "_engine_sanitize_target_dir preserves clean IPs and domain names"
+else
+    fail "_engine_sanitize_target_dir altered simple targets: ip=$slug_ip, domain=$slug_domain"
+fi
+
+# Test 41: URL and ports sanitized
+slug_url="$(_engine_sanitize_target_dir "http://example.com:8080/app/login")"
+if [[ "$slug_url" == "http_example.com_8080_app_login" ]]; then
+    pass "_engine_sanitize_target_dir sanitizes URLs, colons, and paths"
+else
+    fail "_engine_sanitize_target_dir URL sanitization mismatch: $slug_url"
+fi
+
+# Test 42: CIDR notation sanitized
+slug_cidr="$(_engine_sanitize_target_dir "10.0.0.0/24")"
+if [[ "$slug_cidr" == "10.0.0.0_24" ]]; then
+    pass "_engine_sanitize_target_dir sanitizes CIDR notation slashes"
+else
+    fail "_engine_sanitize_target_dir CIDR sanitization mismatch: $slug_cidr"
+fi
+
+# -----------------------------------------------------------------------------
+# UT-10: Dry-Run Simulation Mode (engine_run)
+# -----------------------------------------------------------------------------
+printf '\n%s\n' "UT-10: Dry-Run Simulation Mode (engine_run)"
+
+# Test 43: Dry-run displays simulated plan
+DRY_RUN_OUT_DIR="$TEST_ROOT/dry_run_output"
+TARGET_VALUE=("example.com")
+TARGET_TYPE=("domain")
+engine_init
+engine_resolve_modules "false" "false" "host,dns" ""
+engine_plan_scan
+
+dry_run_output="$(engine_run "true" "$DRY_RUN_OUT_DIR" 0 0)"
+
+if [[ "$dry_run_output" == *"[DRY-RUN] Execution plan simulated (2 tasks)"* && \
+      "$dry_run_output" == *"Target: example.com"* ]]; then
+    pass "engine_run in dry-run mode outputs simulated execution plan"
+else
+    fail "engine_run dry-run output mismatch: $dry_run_output"
+fi
+
+# Test 44: Dry-run does not create directory on disk
+if [[ ! -d "$DRY_RUN_OUT_DIR" ]]; then
+    pass "engine_run in dry-run mode creates no output directory or artifacts on disk"
+else
+    fail "engine_run in dry-run mode created directory unexpectedly: $DRY_RUN_OUT_DIR"
+fi
+
+# -----------------------------------------------------------------------------
+# UT-11: Sequential Execution Runner & Process Management
+# -----------------------------------------------------------------------------
+printf '\n%s\n' "UT-11: Sequential Execution Runner & Process Management"
+
+# Test 45: Sequential runner creates per-module task output directories
+TEST_EXEC_DIR="$TEST_ROOT/scan_run_1"
+TARGET_VALUE=("192.0.2.1")
+TARGET_TYPE=("ipv4")
+engine_init
+engine_resolve_modules "false" "false" "host,port" ""
+engine_plan_scan
+
+if engine_run "false" "$TEST_EXEC_DIR" 0 0; then
+    if [[ -d "$TEST_EXEC_DIR/192.0.2.1/host" && -d "$TEST_EXEC_DIR/192.0.2.1/port" ]]; then
+        pass "engine_run creates isolated per-target and per-module output directories"
+    else
+        fail "engine_run failed to create expected task directories in $TEST_EXEC_DIR"
+    fi
+else
+    fail "engine_run failed on standard planned execution"
+fi
+
+# Test 46: Output files created for tasks
+if [[ -f "$TEST_EXEC_DIR/192.0.2.1/host/stdout.log" && \
+      -f "$TEST_EXEC_DIR/192.0.2.1/host/stderr.log" && \
+      -f "$TEST_EXEC_DIR/192.0.2.1/host/output.txt" ]]; then
+    pass "engine_run generates standard stdout.log, stderr.log, and output.txt artifacts"
+else
+    fail "engine_run missing expected artifact files"
+fi
+
+# Test 47: State tracking arrays populated
+if (( ${#ENGINE_TASK_STATUS[@]} == 2 )) && \
+   [[ "${ENGINE_TASK_STATUS[0]}" == "COMPLETED" && "${ENGINE_TASK_STATUS[1]}" == "COMPLETED" ]] && \
+   (( ENGINE_COMPLETED_TASKS == 2 && ENGINE_FAILED_TASKS == 0 && ENGINE_TIMEOUT_TASKS == 0 )); then
+    pass "engine_run records task status, duration, and exit codes into state arrays"
+else
+    fail "engine_run state tracking mismatch: status=${ENGINE_TASK_STATUS[*]}, completed=$ENGINE_COMPLETED_TASKS"
+fi
+
+# Test 48: Mock dispatcher failure detection
+FAIL_EXEC_DIR="$TEST_ROOT/scan_fail"
+TARGET_VALUE=("192.0.2.1")
+TARGET_TYPE=("ipv4")
+engine_init
+engine_resolve_modules "false" "false" "host" ""
+engine_plan_scan
+
+# Configure mock dispatcher to fail with code 42
+ENGINE_MOCK_DISPATCH_CMD=("bash" "-c" 'echo "Simulated fatal tool error" >&2; exit 42' "_")
+
+if ! engine_run "false" "$FAIL_EXEC_DIR" 0 0 >/dev/null 2>&1; then
+    if (( ENGINE_FAILED_TASKS == 1 )) && \
+       [[ "${ENGINE_TASK_STATUS[0]}" == "FAILED" ]] && \
+       (( ENGINE_TASK_EXIT_CODE[0] == 42 )); then
+        pass "engine_run detects failed module tasks, records FAILED status, and exits with 1"
+    else
+        fail "engine_run failed to record failure state accurately: status=${ENGINE_TASK_STATUS[0]}, code=${ENGINE_TASK_EXIT_CODE[0]}"
+    fi
+else
+    fail "engine_run succeeded despite mock command failure"
+fi
+
+# Test 49: Retries handling (re-attempts failed task up to max_retries)
+RETRY_DIR="$TEST_ROOT/scan_retry"
+RETRY_STATE_FILE="$TEST_ROOT/retry_count.txt"
+echo "0" > "$RETRY_STATE_FILE"
+
+TARGET_VALUE=("192.0.2.1")
+TARGET_TYPE=("ipv4")
+engine_init
+engine_resolve_modules "false" "false" "host" ""
+engine_plan_scan
+
+# Mock dispatcher that fails on 1st attempt, succeeds on 2nd attempt
+# shellcheck disable=SC2016
+ENGINE_MOCK_DISPATCH_CMD=("bash" "-c" '
+state_file="$1"
+cnt=$(cat "$state_file")
+cnt=$(( cnt + 1 ))
+echo "$cnt" > "$state_file"
+if (( cnt < 2 )); then
+    echo "Temporary transient failure" >&2
+    exit 10
+fi
+echo "Recovered after retry"
+exit 0
+' "_" "$RETRY_STATE_FILE")
+
+if engine_run "false" "$RETRY_DIR" 0 2 >/dev/null 2>&1; then
+    attempts_made=$(cat "$RETRY_STATE_FILE")
+    if (( attempts_made == 2 )) && [[ "${ENGINE_TASK_STATUS[0]}" == "COMPLETED" ]]; then
+        pass "engine_run retries failed tasks up to configured retries limit and recovers"
+    else
+        fail "engine_run retry count or recovery mismatch: attempts=$attempts_made, status=${ENGINE_TASK_STATUS[0]}"
+    fi
+else
+    fail "engine_run failed despite retry recovery"
+fi
+
+# Test 50: Timeout handling (marks task TIMEOUT on code 124)
+TIMEOUT_DIR="$TEST_ROOT/scan_timeout"
+TARGET_VALUE=("192.0.2.1")
+TARGET_TYPE=("ipv4")
+engine_init
+engine_resolve_modules "false" "false" "host" ""
+engine_plan_scan
+
+# shellcheck disable=SC2016
+ENGINE_MOCK_DISPATCH_CMD=("bash" "-c" 'echo "Tool timed out" >&2; exit 124' "_")
+
+if ! engine_run "false" "$TIMEOUT_DIR" 1 0 >/dev/null 2>&1; then
+    if (( ENGINE_TIMEOUT_TASKS == 1 )) && \
+       [[ "${ENGINE_TASK_STATUS[0]}" == "TIMEOUT" ]] && \
+       (( ENGINE_TASK_EXIT_CODE[0] == 124 )); then
+        pass "engine_run handles execution timeouts, records TIMEOUT status, and marks engine failure"
+    else
+        fail "engine_run timeout state tracking mismatch: status=${ENGINE_TASK_STATUS[0]}, code=${ENGINE_TASK_EXIT_CODE[0]}"
+    fi
+else
+    fail "engine_run succeeded despite timeout"
 fi
 
 test_summary
