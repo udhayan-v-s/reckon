@@ -16,6 +16,7 @@
 #   - Secure artifact permission enforcement
 #
 
+# shellcheck disable=SC2034
 set -o nounset
 
 SERVICES_COMMON_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -42,6 +43,11 @@ SVC_PORT_SOURCE=""
 SVC_SKIP_SCAN=false
 SVC_SKIP_REASON=""
 SVC_MOD_ERROR=""
+SVC_URL_HOST=""
+SVC_URL_PORT=""
+SVC_URL_PATH=""
+SVC_URL_SCHEME=""
+SVC_TARGET_ORIG=""
 
 # Initialize service module execution context.
 #
@@ -49,15 +55,24 @@ SVC_MOD_ERROR=""
 #   $1 - target string
 #   $2 - target type
 #   $3 - task output directory
+#   $4 - allow_urls (optional boolean: true/false, default: false)
 #
 # Returns:
 #   0 on success, 1 on argument or target incompatibility error
 svc_mod_init() {
+    # shellcheck disable=SC2034
+    local allow_urls="${4:-false}"
+
     SVC_MOD_ERROR=""
     SVC_RESOLVED_PORTS=()
     SVC_PORT_SOURCE=""
     SVC_SKIP_SCAN=false
     SVC_SKIP_REASON=""
+    SVC_URL_HOST=""
+    SVC_URL_PORT=""
+    SVC_URL_PATH=""
+    SVC_URL_SCHEME=""
+    SVC_TARGET_ORIG=""
 
     # Initialize underlying network module framework.
     if ! net_mod_init "$@"; then
@@ -65,8 +80,40 @@ svc_mod_init() {
         return 1
     fi
 
-    # Enforce discrete single-host target compatibility.
+    # Enforce discrete single-host target compatibility (or URL if explicitly permitted).
     if ! net_mod_is_single_host; then
+        if [[ "$allow_urls" == true && ( "$NET_TARGET_TYPE" == "url_http" || "$NET_TARGET_TYPE" == "url_https" ) ]]; then
+            # Parse URL into components
+            local url_str="$NET_TARGET"
+            local proto_scheme="${url_str%%://*}"
+            local rest="${url_str#*://}"
+            local host_port="${rest%%/*}"
+            local url_path="/${rest#*/}"
+            [[ "$url_path" == "/$rest" ]] && url_path="/"
+            local host_part="${host_port%%:*}"
+            local port_part=""
+            if [[ "$host_port" == *":"* ]]; then
+                port_part="${host_port##*:}"
+            fi
+
+            SVC_TARGET="$host_part"
+            SVC_TARGET_ORIG="$NET_TARGET"
+            SVC_TARGET_TYPE="$NET_TARGET_TYPE"
+            SVC_URL_HOST="$host_part"
+            SVC_URL_PORT="$port_part"
+            SVC_URL_PATH="$url_path"
+            SVC_URL_SCHEME="$proto_scheme"
+            SVC_TASK_DIR="$NET_TASK_DIR"
+
+            local parent_target_dir
+            parent_target_dir="$(dirname "$NET_TASK_DIR")"
+            SVC_PORT_DIR="${parent_target_dir}/port"
+            SVC_SERVICE_DIR="${parent_target_dir}/service"
+            SVC_OPEN_PORTS_FILE="${SVC_PORT_DIR}/open_ports.txt"
+            SVC_SERVICES_FILE="${SVC_SERVICE_DIR}/services.txt"
+            return 0
+        fi
+
         SVC_MOD_ERROR="Target '$NET_TARGET' ($NET_TARGET_TYPE) is not a single discrete host."
         net_mod_write_section "Execution Notice"
         net_mod_write_raw "Error: $SVC_MOD_ERROR"
@@ -76,6 +123,7 @@ svc_mod_init() {
     fi
 
     SVC_TARGET="$NET_TARGET"
+    SVC_TARGET_ORIG="$NET_TARGET"
     SVC_TARGET_TYPE="$NET_TARGET_TYPE"
     SVC_TASK_DIR="$NET_TASK_DIR"
 
@@ -140,6 +188,9 @@ svc_mod_resolve_ports() {
             [[ -n "$p" ]] && raw_ports+=("$p")
         done < <(tr ',' '\n' <<< "$cli_ports")
         SVC_PORT_SOURCE="CLI configuration override"
+    elif [[ -n "${SVC_URL_PORT:-}" ]]; then
+        raw_ports+=("$SVC_URL_PORT")
+        SVC_PORT_SOURCE="Target URL port specification"
     fi
 
     # 2. Check upstream services.txt artifact if no explicit ports were configured.
