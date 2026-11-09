@@ -184,6 +184,9 @@ prepare_test_copy() {
 
     cp -p "$PROJECT_ROOT/lib/deps.sh" "$destination/lib/deps.sh" ||
         fail "Copy deps library component"
+
+    cp -p "$PROJECT_ROOT/lib/results.sh" "$destination/lib/results.sh" ||
+        fail "Copy results library component"
 }
 
 printf '%s\n' "RECKON - Entry-Point Integration Tests"
@@ -547,6 +550,33 @@ assert_failure \
     2 \
     "No compatible modules could be scheduled" \
     "$PROJECT_ROOT/reckon" --module dns --target 192.0.2.10
+
+# Test 40: Detect missing results library component.
+MISSING_RESULTS="$TEST_ROOT/missing-results"
+prepare_test_copy "$MISSING_RESULTS"
+
+rm -- "$MISSING_RESULTS/lib/results.sh"
+
+assert_failure \
+    "Detect missing results library component" \
+    1 \
+    "results.sh" \
+    "$MISSING_RESULTS/reckon"
+
+# Test 41: CLI scan generates normalized results.json in output directory.
+if [[ -f "$SCAN_OUT/results.json" && -s "$SCAN_OUT/results.json" ]]; then
+    if command -v jq >/dev/null 2>&1; then
+        if jq -e . "$SCAN_OUT/results.json" >/dev/null 2>&1; then
+            pass "CLI scan generated valid results.json artifact"
+        else
+            fail "CLI scan generated invalid results.json (jq validation failed)"
+        fi
+    else
+        pass "CLI scan generated non-empty results.json artifact"
+    fi
+else
+    fail "CLI scan did not generate expected results.json in $SCAN_OUT"
+fi
 
 # Final summary.
 printf '%s\n' "--------------------------------------"

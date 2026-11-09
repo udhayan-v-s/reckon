@@ -51,6 +51,7 @@ readonly REQUIRED_COMPONENTS=(
     "$PROJECT_ROOT/lib/common.sh"
     "$PROJECT_ROOT/lib/exec.sh"
     "$PROJECT_ROOT/lib/deps.sh"
+    "$PROJECT_ROOT/lib/results.sh"
 )
 
 # Validate required application files.

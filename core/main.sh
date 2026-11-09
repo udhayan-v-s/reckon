@@ -72,6 +72,12 @@ if ! source "$PROJECT_ROOT/lib/deps.sh"; then
     exit 1
 fi
 
+# shellcheck source=lib/results.sh
+if ! source "$PROJECT_ROOT/lib/results.sh"; then
+    printf 'Error: Failed to load result normalization library.\n' >&2
+    exit 1
+fi
+
 # Main application function.
 reckon_main() {
 
@@ -199,6 +205,23 @@ reckon_main() {
             :
         else
             scan_status=$?
+        fi
+
+        # Generate normalized results.json if not in dry-run mode and output directory exists.
+        if [[ "${CLI_DRY_RUN:-false}" != true ]] && [[ -d "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" ]]; then
+            local results_json_path="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json"
+            if results_generate_json "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" "$results_json_path"; then
+                if declare -f log_info >/dev/null 2>&1; then
+                    log_info "Normalized scan findings written to $results_json_path"
+                fi
+                if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
+                    _log_write_file "INFO" "Normalized scan findings written to $results_json_path"
+                fi
+            else
+                if declare -f log_warn >/dev/null 2>&1; then
+                    log_warn "Failed to generate normalized results.json: ${RESULTS_ERROR:-unknown error}"
+                fi
+            fi
         fi
 
         if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
