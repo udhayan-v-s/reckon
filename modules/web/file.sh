@@ -228,10 +228,13 @@ module_file_run() {
             base_url="${base_url%/}"
 
             local line
+            local curl_count=0
             while IFS= read -r line || [[ -n "$line" ]]; do
                 line="${line#"${line%%[![:space:]]*}"}"
                 line="${line%"${line##*[![:space:]]}"}"
                 [[ -z "$line" || "$line" == "#"* ]] && continue
+                (( curl_count += 1 ))
+                (( curl_count > 100 )) && break
 
                 # Clean leading slash from fuzz word
                 local f_path="${line#/}"

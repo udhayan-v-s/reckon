@@ -714,13 +714,8 @@ _engine_dispatch_task() {
     # 2. Check for in-memory module execution function: module_<id>_run (unit testing / mock hook).
     local func_name="module_${mod//-/_}_run"
     if declare -f "$func_name" >/dev/null 2>&1; then
-        if declare -f exec_run >/dev/null 2>&1 && (( timeout_sec == 0 )); then
-            exec_run "$stdout_file" "$stderr_file" 0 "$func_name" "$target" "$t_type" "$task_dir"
-            exit_code=$?
-        else
-            "$func_name" "$target" "$t_type" "$task_dir" >"$stdout_file" 2>"$stderr_file"
-            exit_code=$?
-        fi
+        "$func_name" "$target" "$t_type" "$task_dir" >"$stdout_file" 2>"$stderr_file"
+        exit_code=$?
         return "$exit_code"
     fi
 

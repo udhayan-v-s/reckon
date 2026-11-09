@@ -71,18 +71,24 @@ exec_run() {
 
     local start_time=$SECONDS
 
-    # Execute command with safe stream redirection.
+    # Execute command with safe stream redirection and active PID tracking.
     # Arguments are preserved literally through array expansion ("${cmd[@]}").
+    local cmd_pid
     if [[ "$out_target" == "-" && "$err_target" == "-" ]]; then
-        "${cmd[@]}"
+        "${cmd[@]}" &
     elif [[ "$out_target" == "-" ]]; then
-        "${cmd[@]}" 2>"$err_target"
+        "${cmd[@]}" 2>"$err_target" &
     elif [[ "$err_target" == "-" ]]; then
-        "${cmd[@]}" >"$out_target"
+        "${cmd[@]}" >"$out_target" &
     else
-        "${cmd[@]}" >"$out_target" 2>"$err_target"
+        "${cmd[@]}" >"$out_target" 2>"$err_target" &
     fi
+    cmd_pid=$!
+    _ENGINE_ACTIVE_PID="$cmd_pid"
+
+    wait "$cmd_pid" 2>/dev/null
     EXEC_EXIT_CODE=$?
+    _ENGINE_ACTIVE_PID=""
 
     EXEC_DURATION=$(( SECONDS - start_time ))
 

@@ -110,6 +110,7 @@ readonly _DIR_BUILTIN_WORDLIST=(
 #   Resolved wordlist file path on stdout
 _dir_resolve_wordlist() {
     local dest_tmp="$1"
+    local use_builtin_only="${2:-false}"
 
     # 1. Configured CLI wordlist
     local configured_wordlist="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}"
@@ -118,17 +119,19 @@ _dir_resolve_wordlist() {
         return 0
     fi
 
-    # 2. Standard system wordlists on Kali/Debian
-    local sys_wordlist
-    for sys_wordlist in \
-        "/usr/share/wordlists/dirb/common.txt" \
-        "/usr/share/seclists/Discovery/Web-Content/common.txt" \
-        "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"; do
-        if [[ -f "$sys_wordlist" && -r "$sys_wordlist" ]]; then
-            printf '%s\n' "$sys_wordlist"
-            return 0
-        fi
-    done
+    # 2. Standard system wordlists on Kali/Debian (when fast engine ffuf is available)
+    if [[ "$use_builtin_only" != true ]]; then
+        local sys_wordlist
+        for sys_wordlist in \
+            "/usr/share/wordlists/dirb/common.txt" \
+            "/usr/share/seclists/Discovery/Web-Content/common.txt" \
+            "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"; do
+            if [[ -f "$sys_wordlist" && -r "$sys_wordlist" ]]; then
+                printf '%s\n' "$sys_wordlist"
+                return 0
+            fi
+        done
+    fi
 
     # 3. Built-in fallback wordlist generated in destination path
     printf '%s\n' "${_DIR_BUILTIN_WORDLIST[@]}" > "$dest_tmp"
@@ -167,10 +170,12 @@ module_directory_run() {
     local user_agent
     user_agent="$(web_mod_get_user_agent)"
 
-    # Resolve wordlist path
+    # Resolve wordlist path (uses compact built-in wordlist if running native curl fallback)
     local builtin_tmp="${task_dir}/.builtin_wordlist.tmp"
     local wordlist_path
-    wordlist_path="$(_dir_resolve_wordlist "$builtin_tmp")"
+    local curl_only=false
+    [[ "$has_ffuf" == false ]] && curl_only=true
+    wordlist_path="$(_dir_resolve_wordlist "$builtin_tmp" "$curl_only")"
 
     local total_words
     total_words="$(wc -l < "$wordlist_path" | tr -d ' ')"
@@ -232,10 +237,13 @@ module_directory_run() {
 
             # Limit wordlist size for native curl fallback
             local word
+            local curl_count=0
             while IFS= read -r word || [[ -n "$word" ]]; do
                 word="${word#"${word%%[![:space:]]*}"}"
                 word="${word%"${word##*[![:space:]]}"}"
                 [[ -z "$word" || "$word" == "#"* ]] && continue
+                (( curl_count += 1 ))
+                (( curl_count > 100 )) && break
 
                 local probe_url="${base_url}/${word}/"
                 local head_tmp="${task_dir}/.curl_dir_head.tmp"
