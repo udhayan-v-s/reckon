@@ -1283,8 +1283,8 @@ reporting_generate() {
     elif declare -p CONFIG_EFFECTIVE_FORMATS >/dev/null 2>&1 && (( ${#CONFIG_EFFECTIVE_FORMATS[@]} > 0 )); then
         requested_formats=("${CONFIG_EFFECTIVE_FORMATS[@]}")
     else
-        # Default formats if none explicitly specified: Markdown and Text
-        requested_formats=("MD" "TXT")
+        # Default formats if none explicitly specified: JSON, Markdown, and Text
+        requested_formats=("JSON" "MD" "TXT")
     fi
 
     local fmt

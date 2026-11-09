@@ -78,6 +78,12 @@ if ! source "$PROJECT_ROOT/lib/results.sh"; then
     exit 1
 fi
 
+# shellcheck source=lib/reporting.sh
+if ! source "$PROJECT_ROOT/lib/reporting.sh"; then
+    printf 'Error: Failed to load reporting engine library.\n' >&2
+    exit 1
+fi
+
 # Main application function.
 reckon_main() {
 
@@ -207,19 +213,36 @@ reckon_main() {
             scan_status=$?
         fi
 
-        # Generate normalized results.json if not in dry-run mode and output directory exists.
+        # Generate assessment reports unless in dry-run mode or --no-report is specified.
         if [[ "${CLI_DRY_RUN:-false}" != true ]] && [[ -d "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" ]]; then
-            local results_json_path="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json"
-            if results_generate_json "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" "$results_json_path"; then
+            if [[ "${CONFIG_EFFECTIVE_NO_REPORT:-false}" == true ]]; then
                 if declare -f log_info >/dev/null 2>&1; then
-                    log_info "Normalized scan findings written to $results_json_path"
+                    log_info "Report generation skipped (--no-report enabled)"
                 fi
                 if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
-                    _log_write_file "INFO" "Normalized scan findings written to $results_json_path"
+                    _log_write_file "INFO" "Report generation skipped (--no-report enabled)"
                 fi
             else
-                if declare -f log_warn >/dev/null 2>&1; then
-                    log_warn "Failed to generate normalized results.json: ${RESULTS_ERROR:-unknown error}"
+                local format_str=""
+                if declare -p CONFIG_EFFECTIVE_FORMATS >/dev/null 2>&1 && (( ${#CONFIG_EFFECTIVE_FORMATS[@]} > 0 )); then
+                    local IFS=','
+                    format_str="${CONFIG_EFFECTIVE_FORMATS[*]}"
+                fi
+
+                if reporting_generate "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" "$format_str"; then
+                    local gen_file
+                    for gen_file in "${REPORTING_GENERATED_FILES[@]}"; do
+                        if declare -f log_info >/dev/null 2>&1; then
+                            log_info "Generated assessment report: $gen_file"
+                        fi
+                        if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
+                            _log_write_file "INFO" "Generated assessment report: $gen_file"
+                        fi
+                    done
+                else
+                    if declare -f log_warn >/dev/null 2>&1; then
+                        log_warn "Failed to generate assessment reports: ${REPORTING_ERROR:-unknown error}"
+                    fi
                 fi
             fi
         fi

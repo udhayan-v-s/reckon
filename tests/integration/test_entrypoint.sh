@@ -187,6 +187,9 @@ prepare_test_copy() {
 
     cp -p "$PROJECT_ROOT/lib/results.sh" "$destination/lib/results.sh" ||
         fail "Copy results library component"
+
+    cp -p "$PROJECT_ROOT/lib/reporting.sh" "$destination/lib/reporting.sh" ||
+        fail "Copy reporting library component"
 }
 
 printf '%s\n' "RECKON - Entry-Point Integration Tests"
@@ -576,6 +579,64 @@ if [[ -f "$SCAN_OUT/results.json" && -s "$SCAN_OUT/results.json" ]]; then
     fi
 else
     fail "CLI scan did not generate expected results.json in $SCAN_OUT"
+fi
+
+# Test 42: Detect missing reporting library component.
+MISSING_REPORTING="$TEST_ROOT/missing-reporting"
+prepare_test_copy "$MISSING_REPORTING"
+
+rm -- "$MISSING_REPORTING/lib/reporting.sh"
+
+assert_failure \
+    "Detect missing reporting library component" \
+    1 \
+    "reporting.sh" \
+    "$MISSING_REPORTING/reckon"
+
+# Test 43: CLI scan generates default reports (report.md and report.txt).
+if [[ -f "$SCAN_OUT/report.md" && -s "$SCAN_OUT/report.md" && \
+      -f "$SCAN_OUT/report.txt" && -s "$SCAN_OUT/report.txt" ]]; then
+    pass "CLI scan generated default human-readable reports (report.md, report.txt)"
+else
+    fail "CLI scan missing expected default human-readable reports in $SCAN_OUT"
+fi
+
+# Test 44: CLI scan with --no-report suppresses report generation.
+NO_REPORT_OUT="$TEST_ROOT/no_report_scan"
+assert_success \
+    "CLI scan with --no-report executes successfully" \
+    "$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --output "$NO_REPORT_OUT" --no-report
+
+if [[ -f "$NO_REPORT_OUT/192.0.2.10/host/output.txt" ]]; then
+    pass "CLI scan with --no-report created module output artifacts"
+else
+    fail "CLI scan with --no-report missing module output artifacts"
+fi
+
+if [[ ! -f "$NO_REPORT_OUT/results.json" && \
+      ! -f "$NO_REPORT_OUT/report.md" && \
+      ! -f "$NO_REPORT_OUT/report.txt" ]]; then
+    pass "CLI scan with --no-report created no report files in output directory"
+else
+    fail "CLI scan with --no-report generated unwanted report files"
+fi
+
+# Test 45: CLI scan with explicit --format generates only selected formats.
+CUSTOM_FMT_OUT="$TEST_ROOT/custom_format_scan"
+assert_success \
+    "CLI scan with --format JSON,MD executes successfully" \
+    "$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --output "$CUSTOM_FMT_OUT" --format JSON,MD
+
+if [[ -f "$CUSTOM_FMT_OUT/results.json" && -f "$CUSTOM_FMT_OUT/report.md" ]]; then
+    pass "CLI scan with --format JSON,MD generated requested report files"
+else
+    fail "CLI scan with --format JSON,MD missing requested reports"
+fi
+
+if [[ ! -f "$CUSTOM_FMT_OUT/report.txt" ]]; then
+    pass "CLI scan with --format JSON,MD excluded unrequested format (report.txt)"
+else
+    fail "CLI scan with --format JSON,MD generated excluded report.txt"
 fi
 
 # Final summary.
