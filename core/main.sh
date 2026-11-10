@@ -312,6 +312,49 @@ reckon_main() {
                         log_warn "Failed to generate assessment reports: ${REPORTING_ERROR:-unknown error}"
                     fi
                 fi
+
+                # Synchronize and copy generated reports into individual target directories
+                local -a displayed_report_files=()
+                local t_val
+                for t_val in "${TARGET_VALUE[@]}"; do
+                    local t_slug
+                    t_slug="$(_engine_sanitize_target_dir "$t_val")"
+                    local t_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug}"
+                    if [[ -d "$t_dir" ]]; then
+                        local r_gen
+                        for r_gen in "${REPORTING_GENERATED_FILES[@]}"; do
+                            local r_base
+                            r_base="$(basename "$r_gen")"
+                            local dst_r="${t_dir}/${r_base}"
+                            if [[ -f "$r_gen" ]]; then
+                                cp -f "$r_gen" "$dst_r"
+                                chmod 0640 "$dst_r" 2>/dev/null || true
+                            fi
+                        done
+                    fi
+                done
+
+                # If single target was scanned, present target directory report paths
+                if (( ${#TARGET_VALUE[@]} == 1 )); then
+                    local single_slug="$(_engine_sanitize_target_dir "${TARGET_VALUE[0]}")"
+                    local single_tdir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${single_slug}"
+                    if [[ -d "$single_tdir" ]]; then
+                        local r_gen
+                        for r_gen in "${REPORTING_GENERATED_FILES[@]}"; do
+                            local r_base
+                            r_base="$(basename "$r_gen")"
+                            if [[ -f "${single_tdir}/${r_base}" ]]; then
+                                displayed_report_files+=("${single_tdir}/${r_base}")
+                            else
+                                displayed_report_files+=("$r_gen")
+                            fi
+                        done
+                    else
+                        displayed_report_files=("${REPORTING_GENERATED_FILES[@]}")
+                    fi
+                else
+                    displayed_report_files=("${REPORTING_GENERATED_FILES[@]}")
+                fi
             fi
         fi
 
@@ -324,28 +367,39 @@ reckon_main() {
             local dur_str
             printf -v dur_str '%02d:%02d:%02d' "$h" "$m" "$s"
 
-            local hosts_disc="${RESULTS_TOTAL_HOSTS_UP:-0}"
-            local open_ports="${RESULTS_TOTAL_OPEN_PORTS:-0}"
-            local urls_disc="${RESULTS_TOTAL_ENDPOINTS:-0}"
-            local modules_skipped=$(( ENGINE_TOTAL_TASKS - ENGINE_COMPLETED_TASKS - ENGINE_FAILED_TASKS - ENGINE_TIMEOUT_TASKS ))
-            (( modules_skipped < 0 )) && modules_skipped=0
-
-            # Count services if available
+            local hosts_disc=0
+            local open_ports=0
+            local urls_disc=0
             local svcs_disc=0
-            if [[ -d "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" ]]; then
-                svcs_disc="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/service/services.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
-            fi
-            svcs_disc="${svcs_disc:-0}"
-
-            # Count web services (live endpoints)
             local web_svcs=0
+
             if [[ -d "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" ]]; then
-                web_svcs="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/http-probe/live_endpoints.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
-                if (( ${web_svcs:-0} == 0 )) && [[ -f "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" ]]; then
-                    web_svcs="$(grep -c '"protocol": "http' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" 2>/dev/null || true)"
+                hosts_disc="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/host/hosts_live.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+                open_ports="$(grep -h -E '^[0-9]+' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/port/open_ports.txt 2>/dev/null | sort -u | grep -c -v '^[[:space:]]*$' || true)"
+                svcs_disc="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/service/services.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+                web_svcs="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/http-probe/live_web.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+                if (( web_svcs == 0 )); then
+                    web_svcs="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/http-probe/live_endpoints.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
                 fi
             fi
-            web_svcs="${web_svcs:-0}"
+
+            if (( hosts_disc == 0 )) && (( ${#TARGET_VALUE[@]} > 0 )); then
+                hosts_disc="${#TARGET_VALUE[@]}"
+            fi
+
+            # Synchronize metrics from generated results.json if available
+            if [[ -f "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" ]]; then
+                local json_hosts json_ports json_urls
+                json_hosts="$(jq -r '.summary.total_hosts_up // empty' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" 2>/dev/null || true)"
+                json_ports="$(jq -r '.summary.total_open_ports // empty' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" 2>/dev/null || true)"
+                json_urls="$(jq -r '.summary.total_web_endpoints // empty' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" 2>/dev/null || true)"
+                [[ -n "$json_hosts" && "$json_hosts" =~ ^[0-9]+$ ]] && (( json_hosts > hosts_disc )) && hosts_disc="$json_hosts"
+                [[ -n "$json_ports" && "$json_ports" =~ ^[0-9]+$ ]] && (( json_ports > open_ports )) && open_ports="$json_ports"
+                [[ -n "$json_urls" && "$json_urls" =~ ^[0-9]+$ ]] && urls_disc="$json_urls"
+            fi
+
+            local modules_skipped=$(( ENGINE_TOTAL_TASKS - ENGINE_COMPLETED_TASKS - ENGINE_FAILED_TASKS - ENGINE_TIMEOUT_TASKS ))
+            (( modules_skipped < 0 )) && modules_skipped=0
 
             # Header
             printf '%s\n' "================================================================================"
@@ -369,7 +423,8 @@ reckon_main() {
             printf '%s\n' "================================================================================"
 
             # Output Files block
-            if (( ${#REPORTING_GENERATED_FILES[@]} > 0 )); then
+            local -a reports_to_display=("${displayed_report_files[@]:-${REPORTING_GENERATED_FILES[@]}}")
+            if (( ${#reports_to_display[@]} > 0 )); then
                 if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
                     printf '  %s\n' "$(term_bold "OUTPUT FILES")"
                 else
@@ -378,14 +433,12 @@ reckon_main() {
                 printf '%s\n\n' "================================================================================"
 
                 local rpt_file
-                for rpt_file in "${REPORTING_GENERATED_FILES[@]}"; do
+                for rpt_file in "${reports_to_display[@]}"; do
                     local rpt_label="File    "
                     case "$rpt_file" in
                         *.json) rpt_label="JSON    " ;;
                         *.txt)  rpt_label="Text    " ;;
                         *.md)   rpt_label="Markdown" ;;
-                        *.html) rpt_label="HTML    " ;;
-                        *.csv)  rpt_label="CSV     " ;;
                     esac
                     printf '  %-8s: %s\n' "$rpt_label" "$rpt_file"
                 done

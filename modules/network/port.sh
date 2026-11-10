@@ -108,7 +108,7 @@ port_main() {
                 port_args=("--top-ports" "1000")
                 port_desc="Top 1000 Ports"
                 ;;
-            full|all|1-65535|-p-)
+            full|all|all-ports|all_ports|1-65535|65535|-p-)
                 port_args=("-p-")
                 port_desc="All 65535 Ports (Full Scan)"
                 ;;

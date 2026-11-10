@@ -234,7 +234,7 @@ cli_parse_args() {
                 ;;
 
             # Target port selection.
-            --ports)
+            --ports|-p)
 
                 if ! cli_require_value "$1" "$#" "${2-}"; then
                     return 2
@@ -243,6 +243,14 @@ cli_parse_args() {
                 CLI_PORTS="$2"
                 CLI_EXPLICIT[ports]=true
                 shift 2
+                ;;
+
+            # All ports scan (1-65535).
+            --all-ports|-p-)
+
+                CLI_PORTS="all"
+                CLI_EXPLICIT[ports]=true
+                shift
                 ;;
 
             # Enumeration wordlist.
@@ -510,9 +518,6 @@ cli_validate_reporting() {
         JSON
         TXT
         MD
-        HTML
-        CSV
-        ALL
     )
 
     # Reject report formats when report generation is disabled.
@@ -538,7 +543,7 @@ cli_validate_reporting() {
 
         if [[ "$is_valid" == false ]]; then
             printf 'Error: Unsupported report format: %s\n' "$format" >&2
-            printf 'Supported formats: JSON, HTML, MD, TXT, CSV, ALL.\n' >&2
+            printf 'Supported formats: JSON, MD, TXT.\n' >&2
             return 2
         fi
 
@@ -864,7 +869,7 @@ Scan selection:
 
 Output and reporting:
     -o, --output DIR            Specify the output directory.
-    -f, --format, --report FMTS Specify report formats (JSON, HTML, MD, TXT, CSV, ALL).
+    -f, --format, --report FMTS Specify report formats (JSON, MD, TXT).
         --no-report             Disable report generation.
         --log-file FILE         Specify the log file.
 
@@ -873,7 +878,8 @@ Execution options:
         --threads NUMBER        Set the execution thread count.
         --rate-limit NUMBER     Set the execution rate limit.
         --retries NUMBER        Set the retry count.
-        --ports PORTS           Specify target ports.
+    -p, --ports PORTS           Specify target ports (e.g. 80,443, 1-1000, all).
+        --all-ports, -p-        Scan all 65535 ports (equivalent to --ports all).
         --wordlist FILE         Specify an enumeration wordlist.
         --config FILE           Specify a configuration file.
 
@@ -894,7 +900,7 @@ Examples:
     reckon --target example.com --mode all
     reckon --target example.com --modules host,dns
     reckon --target example.com --network --dry-run
-    reckon --target example.com --web --report all
+    reckon --target example.com --web --report json,md,txt
     reckon --target example.com --network --debug --no-color
 
 For more information, see the project README.

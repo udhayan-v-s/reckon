@@ -179,6 +179,13 @@ host_main() {
         fi
     fi
 
+    # Fallback for loopback targets when raw socket discovery is constrained (e.g. unprivileged sandbox).
+    if (( ${#LIVE_HOSTS[@]} == 0 )) && net_mod_is_single_host; then
+        if [[ "$NET_TARGET" == "127.0.0.1" || "$NET_TARGET" == "localhost" || "$NET_TARGET" == 127.* || "$NET_TARGET" == "::1" ]]; then
+            _host_add_live "$NET_TARGET"
+        fi
+    fi
+
     # Record discovery engines used.
     local engines_str="None"
     if (( ${#tools_used[@]} > 0 )); then

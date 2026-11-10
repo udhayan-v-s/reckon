@@ -626,6 +626,19 @@ config_apply() {
         CONFIG_EFFECTIVE_LOG_FILE="$value"
     fi
 
+    # Export effective configuration variables for child execution modules.
+    export CONFIG_EFFECTIVE_OUTPUT_DIR
+    export CONFIG_EFFECTIVE_COLOR
+    export CONFIG_EFFECTIVE_PROFILE
+    export CONFIG_EFFECTIVE_PORTS
+    export CONFIG_EFFECTIVE_WORDLIST
+    export CONFIG_EFFECTIVE_TIMEOUT
+    export CONFIG_EFFECTIVE_THREADS
+    export CONFIG_EFFECTIVE_RATE_LIMIT
+    export CONFIG_EFFECTIVE_RETRIES
+    export CONFIG_EFFECTIVE_NO_REPORT
+    export CONFIG_EFFECTIVE_LOG_FILE
+
     return 0
 }
 
@@ -727,6 +740,19 @@ config_apply_cli() {
     if [[ -n "${CLI_EXPLICIT[color]+x}" ]]; then
         CONFIG_EFFECTIVE_COLOR="$CLI_COLOR_MODE"
     fi
+
+    # Export effective configuration variables for child execution modules.
+    export CONFIG_EFFECTIVE_OUTPUT_DIR
+    export CONFIG_EFFECTIVE_COLOR
+    export CONFIG_EFFECTIVE_PROFILE
+    export CONFIG_EFFECTIVE_PORTS
+    export CONFIG_EFFECTIVE_WORDLIST
+    export CONFIG_EFFECTIVE_TIMEOUT
+    export CONFIG_EFFECTIVE_THREADS
+    export CONFIG_EFFECTIVE_RATE_LIMIT
+    export CONFIG_EFFECTIVE_RETRIES
+    export CONFIG_EFFECTIVE_NO_REPORT
+    export CONFIG_EFFECTIVE_LOG_FILE
 
     return 0
 }

@@ -1120,22 +1120,58 @@ engine_run() {
                             open_cnt="${open_cnt:-0}"
                             if [[ -f "$task_dir/nmap_port.nmap" ]]; then
                                 local c_val f_val
-                                c_val="$(grep -o -E '[0-9]+ closed' "$task_dir/nmap_port.nmap" 2>/dev/null | awk '{print $1}' || true)"
-                                f_val="$(grep -o -E '[0-9]+ filtered' "$task_dir/nmap_port.nmap" 2>/dev/null | awk '{print $1}' || true)"
+                                c_val="$(grep -o -E '[0-9]+ closed' "$task_dir/nmap_port.nmap" 2>/dev/null | awk '{print $1}' | head -n 1 || true)"
+                                f_val="$(grep -o -E '[0-9]+ filtered' "$task_dir/nmap_port.nmap" 2>/dev/null | awk '{print $1}' | head -n 1 || true)"
+                                if [[ -z "$c_val" ]]; then
+                                    c_val="$(grep -o -E 'All [0-9]+ scanned ports .* \(closed\)' "$task_dir/nmap_port.nmap" 2>/dev/null | awk '{print $2}' | head -n 1 || true)"
+                                fi
+                                if [[ -z "$f_val" ]]; then
+                                    f_val="$(grep -o -E 'All [0-9]+ scanned ports .* \(filtered\)' "$task_dir/nmap_port.nmap" 2>/dev/null | awk '{print $2}' | head -n 1 || true)"
+                                fi
                                 closed_cnt="${c_val:-0}"
                                 filtered_cnt="${f_val:-0}"
                             fi
                             ports_scanned=$(( open_cnt + closed_cnt + filtered_cnt ))
                             if (( ports_scanned == 0 )); then
-                                if [[ -n "${CONFIG_EFFECTIVE_PORTS:-}" ]]; then
-                                    ports_scanned="$(tr ',' '\n' <<< "$CONFIG_EFFECTIVE_PORTS" | grep -c -v '^[[:space:]]*$' || true)"
-                                else
-                                    ports_scanned=1000
-                                    closed_cnt=$(( ports_scanned - open_cnt ))
-                                fi
+                                local ports_val="${CONFIG_EFFECTIVE_PORTS:-}"
+                                case "$ports_val" in
+                                    full|all|all-ports|all_ports|1-65535|65535|-p-)
+                                        ports_scanned=65535
+                                        closed_cnt=$(( ports_scanned - open_cnt ))
+                                        ;;
+                                    top-100|top100|100)
+                                        ports_scanned=100
+                                        closed_cnt=$(( ports_scanned - open_cnt ))
+                                        ;;
+                                    top-1000|top1000|1000)
+                                        ports_scanned=1000
+                                        closed_cnt=$(( ports_scanned - open_cnt ))
+                                        ;;
+                                    "")
+                                        if [[ "${CONFIG_EFFECTIVE_PROFILE:-}" =~ ^(full|all)$ ]]; then
+                                            ports_scanned=65535
+                                            closed_cnt=$(( ports_scanned - open_cnt ))
+                                        elif [[ "${CONFIG_EFFECTIVE_PROFILE:-}" =~ ^(fast|quick)$ ]]; then
+                                            ports_scanned=100
+                                            closed_cnt=$(( ports_scanned - open_cnt ))
+                                        else
+                                            ports_scanned=1000
+                                            closed_cnt=$(( ports_scanned - open_cnt ))
+                                        fi
+                                        ;;
+                                    *)
+                                        ports_scanned="$(tr ',' '\n' <<< "$ports_val" | grep -c -v '^[[:space:]]*$' || true)"
+                                        closed_cnt=$(( ports_scanned - open_cnt ))
+                                        ;;
+                                esac
                             fi
                             printf '  %-20s: %d\n' "Ports Scanned" "$ports_scanned"
                             printf '  %-20s: %d\n' "Open" "$open_cnt"
+                            if (( open_cnt > 0 )) && [[ -f "$task_dir/open_ports.txt" ]]; then
+                                local o_ports
+                                o_ports="$(grep -E '^[0-9]+' "$task_dir/open_ports.txt" 2>/dev/null | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')"
+                                [[ -n "$o_ports" ]] && printf '  %-20s: %s\n' "Open Ports" "$o_ports"
+                            fi
                             printf '  %-20s: %d\n' "Closed" "$closed_cnt"
                             printf '  %-20s: %d\n\n' "Filtered" "$filtered_cnt"
                             ;;
@@ -1145,16 +1181,153 @@ engine_run() {
                                 svc_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/services.txt" 2>/dev/null || true)"
                             fi
                             svc_cnt="${svc_cnt:-0}"
-                            printf '  %-20s: %d\n\n' "Services Identified" "$svc_cnt"
+                            printf '  %-20s: %d\n' "Services Identified" "$svc_cnt"
+                            if (( svc_cnt > 0 )) && [[ -f "$task_dir/services.txt" ]]; then
+                                local s_line
+                                while IFS= read -r s_line || [[ -n "$s_line" ]]; do
+                                    [[ -z "$s_line" ]] && continue
+                                    local s_p s_st s_name s_ver
+                                    read -r s_p s_st s_name s_ver <<< "$s_line"
+                                    local s_desc="${s_p} (${s_name}${s_ver:+ - $s_ver})"
+                                    printf '    - %s\n' "$s_desc"
+                                done < "$task_dir/services.txt"
+                            fi
+                            printf '\n'
                             ;;
                         os)
                             local os_res="No OS match identified"
                             if [[ -f "$task_dir/os.txt" && -s "$task_dir/os.txt" ]]; then
                                 os_res="$(head -n 1 "$task_dir/os.txt" 2>/dev/null || echo "No OS match identified")"
+                            elif [[ -f "$task_dir/os_info.txt" && -s "$task_dir/os_info.txt" ]]; then
+                                os_res="$(head -n 1 "$task_dir/os_info.txt" 2>/dev/null || echo "No OS match identified")"
                             elif [[ -f "$task_dir/os_detection.txt" && -s "$task_dir/os_detection.txt" ]]; then
                                 os_res="$(head -n 1 "$task_dir/os_detection.txt" 2>/dev/null || echo "No OS match identified")"
                             fi
                             printf '  %-20s: %s\n\n' "Result" "$os_res"
+                            ;;
+                        ssh)
+                            local ssh_b=""
+                            if [[ -f "$task_dir/ssh_banner.txt" && -s "$task_dir/ssh_banner.txt" ]]; then
+                                ssh_b="$(head -n 1 "$task_dir/ssh_banner.txt" 2>/dev/null || true)"
+                            elif [[ -f "$task_dir/output.txt" ]]; then
+                                ssh_b="$(grep -E '(Identification Banner|Software Identity)' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed 's/.*: //' || true)"
+                            fi
+                            if [[ -n "$ssh_b" ]]; then
+                                printf '  %-20s: %s\n\n' "Banner" "$ssh_b"
+                            else
+                                printf '  %-20s: %s\n\n' "Result" "SSH enumeration complete"
+                            fi
+                            ;;
+                        http|https)
+                            local h_srv="" h_title=""
+                            if [[ -f "$task_dir/output.txt" ]]; then
+                                h_srv="$(grep 'Server Banner' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed 's/.*: //' || true)"
+                                h_title="$(grep 'HTML Page Title' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed 's/.*: //' || true)"
+                            fi
+                            if [[ -n "$h_srv" ]]; then
+                                printf '  %-20s: %s\n' "Server" "$h_srv"
+                            fi
+                            if [[ -n "$h_title" ]]; then
+                                printf '  %-20s: %s\n' "Page Title" "$h_title"
+                            fi
+                            if [[ -z "$h_srv" && -z "$h_title" ]]; then
+                                printf '  %-20s: %s\n' "Result" "${mod^^} enumeration complete"
+                            fi
+                            printf '\n'
+                            ;;
+                        ftp)
+                            local ftp_b=""
+                            if [[ -f "$task_dir/ftp_banner.txt" && -s "$task_dir/ftp_banner.txt" ]]; then
+                                ftp_b="$(head -n 1 "$task_dir/ftp_banner.txt" 2>/dev/null || true)"
+                            elif [[ -f "$task_dir/output.txt" ]]; then
+                                ftp_b="$(grep -E '(Banner|FTP Server)' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed 's/.*: //' || true)"
+                            fi
+                            if [[ -n "$ftp_b" ]]; then
+                                printf '  %-20s: %s\n\n' "Banner" "$ftp_b"
+                            else
+                                printf '  %-20s: %s\n\n' "Result" "FTP enumeration complete"
+                            fi
+                            ;;
+                        smb)
+                            local smb_res=""
+                            if [[ -f "$task_dir/output.txt" ]]; then
+                                smb_res="$(grep -E '(OS|Dialect|Workgroup)' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed 's/.*: //' || true)"
+                            fi
+                            if [[ -n "$smb_res" ]]; then
+                                printf '  %-20s: %s\n\n' "SMB Details" "$smb_res"
+                            else
+                                printf '  %-20s: %s\n\n' "Result" "SMB enumeration complete"
+                            fi
+                            ;;
+                        telnet)
+                            local telnet_b=""
+                            if [[ -f "$task_dir/telnet_banner.txt" && -s "$task_dir/telnet_banner.txt" ]]; then
+                                telnet_b="$(head -n 1 "$task_dir/telnet_banner.txt" 2>/dev/null || true)"
+                            fi
+                            if [[ -n "$telnet_b" ]]; then
+                                printf '  %-20s: %s\n\n' "Banner" "$telnet_b"
+                            else
+                                printf '  %-20s: %s\n\n' "Result" "Telnet enumeration complete"
+                            fi
+                            ;;
+                        http-probe)
+                            local p_urls=""
+                            if [[ -f "$task_dir/live_web.txt" ]]; then
+                                p_urls="$(grep -v '^[[:space:]]*$' "$task_dir/live_web.txt" 2>/dev/null | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')"
+                            fi
+                            if [[ -n "$p_urls" ]]; then
+                                printf '  %-20s: %s\n\n' "Live Web Services" "$p_urls"
+                            else
+                                printf '  %-20s: %s\n\n' "Result" "No active web services discovered"
+                            fi
+                            ;;
+                        technology)
+                            local tech_str=""
+                            if [[ -f "$task_dir/technologies.txt" && -s "$task_dir/technologies.txt" ]]; then
+                                tech_str="$(awk -F'\t' '{print $1}' "$task_dir/technologies.txt" 2>/dev/null | tr '\n' ',' | sed 's/,$//' | sed 's/,/, /g')"
+                            fi
+                            if [[ -n "$tech_str" ]]; then
+                                printf '  %-20s: %s\n\n' "Technologies" "$tech_str"
+                            else
+                                printf '  %-20s: %s\n\n' "Technologies" "None detected"
+                            fi
+                            ;;
+                        cms)
+                            local cms_str="None"
+                            if [[ -f "$task_dir/cms_detected.txt" && -s "$task_dir/cms_detected.txt" ]]; then
+                                cms_str="$(head -n 1 "$task_dir/cms_detected.txt" 2>/dev/null || echo "None")"
+                            fi
+                            printf '  %-20s: %s\n\n' "CMS Detected" "$cms_str"
+                            ;;
+                        waf)
+                            local waf_str="None (Direct origin)"
+                            if [[ -f "$task_dir/waf_detected.txt" && -s "$task_dir/waf_detected.txt" ]]; then
+                                waf_str="$(head -n 1 "$task_dir/waf_detected.txt" 2>/dev/null || echo "None (Direct origin)")"
+                            fi
+                            printf '  %-20s: %s\n\n' "WAF Detected" "$waf_str"
+                            ;;
+                        http-analysis)
+                            local mis_cnt=0
+                            if [[ -f "$task_dir/output.txt" ]]; then
+                                mis_cnt="$(grep -c 'Missing Header:' "$task_dir/output.txt" 2>/dev/null || true)"
+                            fi
+                            mis_cnt="${mis_cnt:-0}"
+                            if (( mis_cnt > 0 )); then
+                                printf '  %-20s: %d missing security header(s)\n\n' "Security Posture" "$mis_cnt"
+                            else
+                                printf '  %-20s: %s\n\n' "Security Posture" "Analysis complete"
+                            fi
+                            ;;
+                        tls)
+                            local c_subj=""
+                            if [[ -f "$task_dir/cert_info.txt" ]]; then
+                                c_subj="$(grep -E '(Common Name|Subject:)' "$task_dir/cert_info.txt" 2>/dev/null | head -n 1 | sed 's/.*: //' || true)"
+                            fi
+                            if [[ -n "$c_subj" ]]; then
+                                printf '  %-20s: %s\n\n' "Certificate" "$c_subj"
+                            else
+                                printf '  %-20s: %s\n\n' "Result" "TLS audit complete"
+                            fi
                             ;;
                         *)
                             printf '  %-20s: %s\n\n' "Result" "$result_detail"

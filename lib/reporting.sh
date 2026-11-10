@@ -46,14 +46,12 @@ _reporting_ensure_results_json() {
     local output_dir="${1:-}"
     local results_file="${output_dir}/results.json"
 
-    if [[ -f "$results_file" && -s "$results_file" ]]; then
-        return 0
+    if declare -f results_generate_json >/dev/null 2>&1; then
+        results_generate_json "$output_dir" "$results_file" || true
     fi
 
-    if declare -f results_generate_json >/dev/null 2>&1; then
-        if results_generate_json "$output_dir" "$results_file"; then
-            return 0
-        fi
+    if [[ -f "$results_file" && -s "$results_file" ]]; then
+        return 0
     fi
 
     REPORTING_ERROR="results.json missing in $output_dir and could not be generated"
@@ -680,8 +678,35 @@ reporting_export_text() {
             printf '   Status               : COMPLETED\n'
             printf '   Open Ports           : %s\n' "$port_count"
             if (( port_count == 0 )); then
-                printf '   Ports Scanned        : 1000\n'
-                printf '   Closed Ports         : 1000\n'
+                local rep_ports_scanned=1000
+                local rep_ports_cfg="${CONFIG_EFFECTIVE_PORTS:-}"
+                case "$rep_ports_cfg" in
+                    full|all|all-ports|all_ports|1-65535|65535|-p-)
+                        rep_ports_scanned=65535
+                        ;;
+                    top-100|top100|100)
+                        rep_ports_scanned=100
+                        ;;
+                    top-1000|top1000|1000)
+                        rep_ports_scanned=1000
+                        ;;
+                    "")
+                        if [[ "${CONFIG_EFFECTIVE_PROFILE:-}" =~ ^(full|all)$ ]]; then
+                            rep_ports_scanned=65535
+                        elif [[ "${CONFIG_EFFECTIVE_PROFILE:-}" =~ ^(fast|quick)$ ]]; then
+                            rep_ports_scanned=100
+                        fi
+                        ;;
+                    *)
+                        if [[ -n "$rep_ports_cfg" ]]; then
+                            rep_ports_scanned="$(tr ',' '\n' <<< "$rep_ports_cfg" | grep -c -v '^[[:space:]]*$' || echo 1)"
+                        fi
+                        ;;
+                esac
+                local rep_closed_ports=$(( rep_ports_scanned - port_count ))
+                (( rep_closed_ports < 0 )) && rep_closed_ports=0
+                printf '   Ports Scanned        : %d\n' "$rep_ports_scanned"
+                printf '   Closed Ports         : %d\n' "$rep_closed_ports"
                 printf '   Filtered Ports       : 0\n\n'
                 printf '   No open ports identified.\n\n'
             else
@@ -1421,7 +1446,7 @@ reporting_generate() {
         case "$u_fmt" in
             JSON)
                 local json_out="${output_dir}/results.json"
-                if [[ ! -f "$json_out" ]]; then
+                if declare -f results_generate_json >/dev/null 2>&1; then
                     results_generate_json "$output_dir" "$json_out" || true
                 fi
                 REPORTING_GENERATED_FILES+=("$json_out")
