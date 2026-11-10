@@ -10,5 +10,5 @@
 
 # Application identity.
 readonly APP_NAME="RECKON"
-readonly APP_VERSION="0.1.0"
+readonly APP_VERSION="1.0.0"
 readonly APP_DESCRIPTION="A modular Bash-based network and web reconnaissance toolkit."

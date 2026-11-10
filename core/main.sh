@@ -103,11 +103,10 @@ reckon_main() {
         exit "$parse_status"
     fi
 
-    # When no arguments are provided, display the startup banner, version, and help.
+    # When no arguments are provided, display the startup banner and help.
     if (( $# == 0 )); then
         term_init "$CLI_COLOR_MODE"
         cli_show_banner
-        printf 'Version: %s\n\n' "$APP_VERSION"
         cli_show_help
         return 0
     fi
@@ -193,12 +192,15 @@ reckon_main() {
     fi
 
     # Application identity banner display.
-    if [[ "$CLI_NO_BANNER" == false && "$CLI_QUIET" == false ]]; then
-        cli_show_banner
+    if [[ "$CLI_QUIET" == false ]]; then
+        if [[ "$CLI_NO_BANNER" == false ]]; then
+            cli_show_banner
+        else
+            printf '%s\n' "$APP_NAME"
+            printf 'Version: %s\n' "$APP_VERSION"
+            printf '%s\n\n' "$APP_DESCRIPTION"
+        fi
     fi
-    printf '%s\n' "$APP_NAME"
-    printf 'Version: %s\n' "$APP_VERSION"
-    printf '%s\n' "$APP_DESCRIPTION"
 
     # Record initialization record to log file if configured.
     if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
@@ -219,6 +221,62 @@ reckon_main() {
             exit 2
         fi
 
+        # Display Scan Session Header card
+        if [[ "$CLI_QUIET" == false && "${CLI_DRY_RUN:-false}" != true ]]; then
+            local mode_label="Network"
+            local scan_title="NETWORK RECONNAISSANCE"
+            if [[ "${CLI_NETWORK:-false}" == true && "${CLI_WEB:-false}" == true ]]; then
+                mode_label="Network + Web"
+                scan_title="NETWORK & WEB RECONNAISSANCE"
+            elif [[ "${CLI_WEB:-false}" == true ]]; then
+                mode_label="Web"
+                scan_title="WEB RECONNAISSANCE"
+            fi
+
+            local target_display="${TARGET_VALUE[0]}"
+            if (( ${#TARGET_VALUE[@]} > 1 )); then
+                target_display="${TARGET_VALUE[0]} (+ $(( ${#TARGET_VALUE[@]} - 1 )) more)"
+            fi
+
+            local target_type_str="Unknown"
+            if (( ${#TARGET_TYPE[@]} > 0 )); then
+                case "${TARGET_TYPE[0]}" in
+                    ipv4) target_type_str="IPv4" ;;
+                    domain) target_type_str="Domain" ;;
+                    hostname) target_type_str="Hostname" ;;
+                    url) target_type_str="URL" ;;
+                    *) target_type_str="${TARGET_TYPE[0]}" ;;
+                esac
+            fi
+
+            local profile_str="${CONFIG_EFFECTIVE_PROFILE:-Default}"
+            [[ -z "$profile_str" ]] && profile_str="Default"
+            profile_str="${profile_str^}"
+
+            local start_time_str
+            printf -v start_time_str '%(%Y-%m-%d %H:%M:%S)T' -1
+
+            local out_display="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"
+            [[ "$out_display" != */ ]] && out_display="${out_display}/"
+
+            printf '%s\n' "================================================================================"
+            if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                printf '  %s | %s\n' "$(term_bold "RECKON")" "$(term_cyan "$scan_title")"
+            else
+                printf '  RECKON | %s\n' "$scan_title"
+            fi
+            printf '%s\n\n' "================================================================================"
+            printf '  TARGET INFORMATION\n'
+            printf '  ─────────────────────────────────────────────────────────────────────────────\n'
+            printf '  %-20s: %s\n' "Target" "$target_display"
+            printf '  %-20s: %s\n' "Target Type" "$target_type_str"
+            printf '  %-20s: %s\n' "Scan Mode" "$mode_label"
+            printf '  %-20s: %s\n' "Scan Profile" "$profile_str"
+            printf '  %-20s: %s\n' "Start Time" "$start_time_str"
+            printf '  %-20s: %s\n\n' "Output Directory" "$out_display"
+        fi
+
+        local scan_start_time=$SECONDS
         local scan_status=0
         if engine_run; then
             :
@@ -245,9 +303,6 @@ reckon_main() {
                 if reporting_generate "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" "$format_str"; then
                     local gen_file
                     for gen_file in "${REPORTING_GENERATED_FILES[@]}"; do
-                        if declare -f log_info >/dev/null 2>&1; then
-                            log_info "Generated assessment report: $gen_file"
-                        fi
                         if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
                             _log_write_file "INFO" "Generated assessment report: $gen_file"
                         fi
@@ -257,6 +312,99 @@ reckon_main() {
                         log_warn "Failed to generate assessment reports: ${REPORTING_ERROR:-unknown error}"
                     fi
                 fi
+            fi
+        fi
+
+        # Scan completion summary display: SCAN SUMMARY & REPORTS GENERATED
+        if [[ "$CLI_QUIET" == false && "${CLI_DRY_RUN:-false}" != true ]]; then
+            local scan_duration=$(( SECONDS - scan_start_time ))
+            local h=$(( scan_duration / 3600 ))
+            local m=$(( (scan_duration % 3600) / 60 ))
+            local s=$(( scan_duration % 60 ))
+            local dur_str
+            printf -v dur_str '%02d:%02d:%02d' "$h" "$m" "$s"
+
+            local hosts_disc="${RESULTS_TOTAL_HOSTS_UP:-0}"
+            local open_ports="${RESULTS_TOTAL_OPEN_PORTS:-0}"
+            local urls_disc="${RESULTS_TOTAL_ENDPOINTS:-0}"
+            local modules_skipped=$(( ENGINE_TOTAL_TASKS - ENGINE_COMPLETED_TASKS - ENGINE_FAILED_TASKS - ENGINE_TIMEOUT_TASKS ))
+            (( modules_skipped < 0 )) && modules_skipped=0
+
+            # Count services if available
+            local svcs_disc=0
+            if [[ -d "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" ]]; then
+                svcs_disc="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/service/services.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+            fi
+            svcs_disc="${svcs_disc:-0}"
+
+            # Count web services (live endpoints)
+            local web_svcs=0
+            if [[ -d "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" ]]; then
+                web_svcs="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/http-probe/live_endpoints.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+                if (( ${web_svcs:-0} == 0 )) && [[ -f "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" ]]; then
+                    web_svcs="$(grep -c '"protocol": "http' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" 2>/dev/null || true)"
+                fi
+            fi
+            web_svcs="${web_svcs:-0}"
+
+            # Header
+            printf '%s\n' "================================================================================"
+            if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                printf '  %s\n' "$(term_bold "SCAN SUMMARY")"
+            else
+                printf '  SCAN SUMMARY\n'
+            fi
+            printf '%s\n\n' "================================================================================"
+            printf '  %-24s: %d\n' "Targets Processed" "${#TARGET_VALUE[@]}"
+            printf '  %-24s: %d\n' "Hosts Discovered" "$hosts_disc"
+            printf '  %-24s: %d\n' "Open Ports" "$open_ports"
+            printf '  %-24s: %d\n' "Services Identified" "$svcs_disc"
+            printf '  %-24s: %d\n\n' "Web Services" "$web_svcs"
+
+            printf '  %-24s: %d\n' "Modules Executed" "$ENGINE_COMPLETED_TASKS"
+            printf '  %-24s: %d\n' "Modules Not Applicable" "${ENGINE_NOT_APPLICABLE_TASKS:-0}"
+            printf '  %-24s: %d\n\n' "Modules Failed" "$(( ENGINE_FAILED_TASKS + ENGINE_TIMEOUT_TASKS ))"
+
+            printf '  %-24s: %s\n\n' "Duration" "$dur_str"
+            printf '%s\n' "================================================================================"
+
+            # Output Files block
+            if (( ${#REPORTING_GENERATED_FILES[@]} > 0 )); then
+                if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    printf '  %s\n' "$(term_bold "OUTPUT FILES")"
+                else
+                    printf '  OUTPUT FILES\n'
+                fi
+                printf '%s\n\n' "================================================================================"
+
+                local rpt_file
+                for rpt_file in "${REPORTING_GENERATED_FILES[@]}"; do
+                    local rpt_label="File    "
+                    case "$rpt_file" in
+                        *.json) rpt_label="JSON    " ;;
+                        *.txt)  rpt_label="Text    " ;;
+                        *.md)   rpt_label="Markdown" ;;
+                        *.html) rpt_label="HTML    " ;;
+                        *.csv)  rpt_label="CSV     " ;;
+                    esac
+                    printf '  %-8s: %s\n' "$rpt_label" "$rpt_file"
+                done
+
+                printf '\n'
+                if (( scan_status == 0 )); then
+                    if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                        printf '  %s\n' "$(term_green "RECONNAISSANCE COMPLETED")"
+                    else
+                        printf '  RECONNAISSANCE COMPLETED\n'
+                    fi
+                else
+                    if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                        printf '  %s\n' "$(term_yellow "RECONNAISSANCE COMPLETED WITH WARNINGS")"
+                    else
+                        printf '  RECONNAISSANCE COMPLETED WITH WARNINGS\n'
+                    fi
+                fi
+                printf '%s\n' "================================================================================"
             fi
         fi
 

@@ -270,27 +270,27 @@ assert_failure \
 assert_success_output \
     "Help takes priority over version" \
     "Usage:" \
-    "RECKON 0.1.0" \
+    "RECKON 1.0.0" \
     "$PROJECT_ROOT/reckon" --help --version
 
 # Test 11: Help priority is independent of argument order.
 assert_success_output \
     "Help priority with reversed argument order" \
     "Usage:" \
-    "RECKON 0.1.0" \
+    "RECKON 1.0.0" \
     "$PROJECT_ROOT/reckon" --version --help
 
 # Test 12: Version information is displayed.
 assert_success_output \
     "Version information" \
-    "RECKON 0.1.0" \
+    "RECKON 1.0.0" \
     "" \
     "$PROJECT_ROOT/reckon" --version
 
 # Test 13: Valid network scan arguments are accepted.
 assert_success_output \
     "Valid network scan arguments" \
-    "Version: 0.1.0" \
+    "Version: 1.0.0" \
     "" \
     "$PROJECT_ROOT/reckon" --network --target 192.0.2.10
 
@@ -315,7 +315,7 @@ printf '%s\n' '{"schema_version":1}' > "$VALID_CONFIG"
 
 assert_success_output \
     "Load valid JSON configuration through CLI" \
-    "Version: 0.1.0" \
+    "Version: 1.0.0" \
     "Error:" \
     "$PROJECT_ROOT/reckon" --config "$VALID_CONFIG"
 
@@ -349,7 +349,7 @@ assert_success_output \
 # Test 20: Version bypasses configuration loading.
 assert_success_output \
     "Version bypasses invalid configuration loading" \
-    "RECKON 0.1.0" \
+    "RECKON 1.0.0" \
     "Invalid JSON configuration file" \
     "$PROJECT_ROOT/reckon" --config "$INVALID_CONFIG" --version
 
@@ -366,7 +366,7 @@ EOF
 
 assert_success_output \
     "Targets file accepted through CLI" \
-    "Version: 0.1.0" \
+    "Version: 1.0.0" \
     "Error:" \
     "$PROJECT_ROOT/reckon" --network --targets-file "$TARGETS_FILE"
 
@@ -411,7 +411,7 @@ printf '%s\n' '{"schema_version":1,"execution":{"timeout":60}}' > "$PRECEDENCE_C
 
 assert_success_output \
     "Config + CLI target: precedence applied, target prepared" \
-    "Version: 0.1.0" \
+    "Version: 1.0.0" \
     "Error:" \
     "$PROJECT_ROOT/reckon" --config "$PRECEDENCE_CONFIG" --network --target example.com
 
@@ -444,7 +444,7 @@ AUDIT_LOG="$TEST_ROOT/pipeline_audit.log"
 
 assert_success_output \
     "Pipeline execution initializes log file" \
-    "Version: 0.1.0" \
+    "Version: 1.0.0" \
     "Error:" \
     "$PROJECT_ROOT/reckon" --network --target 192.0.2.10 --log-file "$AUDIT_LOG"
 
@@ -528,7 +528,7 @@ fi
 SCAN_OUT="$TEST_ROOT/scan_results"
 assert_success_output \
     "CLI execution completes scheduled tasks" \
-    "Module 'host' completed for target '192.0.2.10'" \
+    "RECONNAISSANCE COMPLETED" \
     "Error:" \
     "$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --output "$SCAN_OUT"
 

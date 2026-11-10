@@ -1007,7 +1007,11 @@ results_generate_json() {
     "total_open_ports": $RESULTS_TOTAL_OPEN_PORTS,
     "total_subdomains": $RESULTS_TOTAL_SUBDOMAINS,
     "total_web_endpoints": $RESULTS_TOTAL_ENDPOINTS,
-    "total_security_issues": $RESULTS_TOTAL_SECURITY_ISSUES
+    "total_security_issues": $RESULTS_TOTAL_SECURITY_ISSUES,
+    "modules_completed": ${ENGINE_COMPLETED_TASKS:-0},
+    "modules_not_applicable": ${ENGINE_NOT_APPLICABLE_TASKS:-0},
+    "modules_failed": $(( ${ENGINE_FAILED_TASKS:-0} + ${ENGINE_TIMEOUT_TASKS:-0} )),
+    "modules_skipped": ${ENGINE_SKIPPED_TASKS:-0}
   },
   "targets": $targets_array
 }

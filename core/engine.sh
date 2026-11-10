@@ -61,6 +61,7 @@ readonly _ENGINE_ALL_MODULES=(
 # Engine lifecycle counters.
 ENGINE_TOTAL_TASKS=0
 ENGINE_COMPLETED_TASKS=0
+ENGINE_NOT_APPLICABLE_TASKS=0
 ENGINE_FAILED_TASKS=0
 ENGINE_SKIPPED_TASKS=0
 ENGINE_TIMEOUT_TASKS=0
@@ -90,6 +91,7 @@ _ENGINE_TRAPS_INSTALLED=false
 engine_init() {
     ENGINE_TOTAL_TASKS=0
     ENGINE_COMPLETED_TASKS=0
+    ENGINE_NOT_APPLICABLE_TASKS=0
     ENGINE_FAILED_TASKS=0
     ENGINE_SKIPPED_TASKS=0
     ENGINE_TIMEOUT_TASKS=0
@@ -819,6 +821,7 @@ engine_run() {
     ENGINE_TASK_EXIT_CODE=()
     ENGINE_TASK_OUTPUT_DIR=()
     ENGINE_COMPLETED_TASKS=0
+    ENGINE_NOT_APPLICABLE_TASKS=0
     ENGINE_FAILED_TASKS=0
     ENGINE_TIMEOUT_TASKS=0
 
@@ -833,6 +836,17 @@ engine_run() {
             ENGINE_ERROR="Failed to create or access base output directory: $base_out"
             return 1
         }
+    fi
+
+    # Display Reconnaissance section header
+    if [[ "${CLI_QUIET:-false}" != true ]]; then
+        printf '%s\n' "================================================================================"
+        if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+            printf '  %s\n' "$(term_bold "RECONNAISSANCE")"
+        else
+            printf '  RECONNAISSANCE\n'
+        fi
+        printf '%s\n\n' "================================================================================"
     fi
 
     # Install signal handlers during active scan execution.
@@ -863,9 +877,13 @@ engine_run() {
             { mkdir -p "$task_dir" && chmod 0750 "$task_dir"; } 2>/dev/null || true
         fi
 
-        # Log task start.
-        if declare -f log_info >/dev/null 2>&1; then
-            log_info "Executing [$(( i + 1 ))/$ENGINE_TOTAL_TASKS] $mod ($mod_name) on target '$target'..."
+        # Log task start (audit log records start; terminal displays start when verbose/debug is active).
+        if [[ "${CLI_VERBOSE:-false}" == true || "${LOG_VERBOSE:-false}" == true || "${CLI_DEBUG:-false}" == true ]]; then
+            if declare -f log_info >/dev/null 2>&1; then
+                log_info "Executing [$(( i + 1 ))/$ENGINE_TOTAL_TASKS] $mod ($mod_name) on target '$target'..."
+            fi
+        else
+            _log_write_file "INFO" "Executing [$(( i + 1 ))/$ENGINE_TOTAL_TASKS] $mod ($mod_name) on target '$target'..."
         fi
 
         start_time=$SECONDS
@@ -892,26 +910,296 @@ engine_run() {
 
         duration=$(( SECONDS - start_time ))
 
+        # Format task execution status card
+        local task_idx_str
+        printf -v task_idx_str '%02d/%02d' "$(( i + 1 ))" "$ENGINE_TOTAL_TASKS"
+
+        # Determine finding summary for result line
+        local result_detail=""
+        case "$mod" in
+            host)
+                local host_cnt=0
+                if [[ -f "$task_dir/hosts_live.txt" ]]; then
+                    host_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/hosts_live.txt" 2>/dev/null || true)"
+                elif [[ -f "$task_dir/hosts.txt" ]]; then
+                    host_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/hosts.txt" 2>/dev/null || true)"
+                fi
+                host_cnt="${host_cnt:-0}"
+                if (( host_cnt > 0 )); then
+                    result_detail="${host_cnt} host(s) discovered"
+                else
+                    result_detail="No live hosts detected"
+                fi
+                ;;
+            port)
+                local port_cnt=0
+                if [[ -f "$task_dir/open_ports.txt" ]]; then
+                    port_cnt="$(grep -c -E '^[0-9]+' "$task_dir/open_ports.txt" 2>/dev/null || true)"
+                elif [[ -f "$task_dir/ports_open.txt" ]]; then
+                    port_cnt="$(grep -c -E '^[0-9]+' "$task_dir/ports_open.txt" 2>/dev/null || true)"
+                fi
+                port_cnt="${port_cnt:-0}"
+                if (( port_cnt > 0 )); then
+                    result_detail="${port_cnt} open port(s) identified"
+                else
+                    result_detail="No open ports identified"
+                fi
+                ;;
+            service)
+                local svc_cnt=0
+                if [[ -f "$task_dir/services.txt" ]]; then
+                    svc_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/services.txt" 2>/dev/null || true)"
+                fi
+                svc_cnt="${svc_cnt:-0}"
+                if (( svc_cnt > 0 )); then
+                    result_detail="${svc_cnt} service(s) identified"
+                else
+                    result_detail="Service scan complete"
+                fi
+                ;;
+            os)
+                if [[ -f "$task_dir/os.txt" && -s "$task_dir/os.txt" ]]; then
+                    result_detail="$(head -n 1 "$task_dir/os.txt" 2>/dev/null || echo "OS detection complete")"
+                else
+                    result_detail="OS detection complete"
+                fi
+                ;;
+            dns)
+                local dns_cnt=0
+                if [[ -f "$task_dir/dns_records.txt" ]]; then
+                    dns_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/dns_records.txt" 2>/dev/null || true)"
+                fi
+                dns_cnt="${dns_cnt:-0}"
+                if (( dns_cnt > 0 )); then
+                    result_detail="${dns_cnt} DNS record(s) resolved"
+                else
+                    result_detail="DNS reconnaissance complete"
+                fi
+                ;;
+            subdomain)
+                local sub_cnt=0
+                if [[ -f "$task_dir/subdomains.txt" ]]; then
+                    sub_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/subdomains.txt" 2>/dev/null || true)"
+                fi
+                sub_cnt="${sub_cnt:-0}"
+                if (( sub_cnt > 0 )); then
+                    result_detail="${sub_cnt} subdomain(s) discovered"
+                else
+                    result_detail="No subdomains discovered"
+                fi
+                ;;
+            directory)
+                local dir_cnt=0
+                if [[ -f "$task_dir/dirs_discovered.txt" ]]; then
+                    dir_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/dirs_discovered.txt" 2>/dev/null || true)"
+                fi
+                dir_cnt="${dir_cnt:-0}"
+                if (( dir_cnt > 0 )); then
+                    result_detail="${dir_cnt} directories discovered"
+                else
+                    result_detail="No directories discovered"
+                fi
+                ;;
+            file)
+                local file_cnt=0
+                if [[ -f "$task_dir/files_discovered.txt" ]]; then
+                    file_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/files_discovered.txt" 2>/dev/null || true)"
+                fi
+                file_cnt="${file_cnt:-0}"
+                if (( file_cnt > 0 )); then
+                    result_detail="${file_cnt} files discovered"
+                else
+                    result_detail="No files discovered"
+                fi
+                ;;
+            crawl)
+                local crawl_cnt=0
+                if [[ -f "$task_dir/crawled_urls.txt" ]]; then
+                    crawl_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/crawled_urls.txt" 2>/dev/null || true)"
+                fi
+                crawl_cnt="${crawl_cnt:-0}"
+                if (( crawl_cnt > 0 )); then
+                    result_detail="${crawl_cnt} URLs crawled"
+                else
+                    result_detail="Web crawl complete"
+                fi
+                ;;
+            endpoint)
+                local ep_cnt=0
+                if [[ -f "$task_dir/endpoints.txt" ]]; then
+                    ep_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/endpoints.txt" 2>/dev/null || true)"
+                fi
+                ep_cnt="${ep_cnt:-0}"
+                if (( ep_cnt > 0 )); then
+                    result_detail="${ep_cnt} endpoints discovered"
+                else
+                    result_detail="Endpoint extraction complete"
+                fi
+                ;;
+            *)
+                result_detail="Scan complete"
+                ;;
+        esac
+
+        # Determine if module is NOT APPLICABLE based on upstream prerequisites
+        local is_not_applicable=false
+        local skip_reason=""
+        if [[ "$mod" =~ ^(ssh|ftp|http|https|smb|telnet)$ ]]; then
+            local svc_out_file="$task_dir/output.txt"
+            if [[ -f "$svc_out_file" ]] && grep -q -E '(Service not active|is not open|Skipping active interrogation)' "$svc_out_file" 2>/dev/null; then
+                is_not_applicable=true
+            elif [[ ! -s "$task_dir/open_ports.txt" && -f "$base_out/$target_slug/port/open_ports.txt" && ! -s "$base_out/$target_slug/port/open_ports.txt" ]]; then
+                is_not_applicable=true
+            fi
+            if [[ "$is_not_applicable" == true ]]; then
+                local svc_title="${mod^^}"
+                [[ "$mod" == "telnet" ]] && svc_title="Telnet"
+                skip_reason="No ${svc_title} service identified"
+            fi
+        elif [[ "$mod" =~ ^(technology|cms|waf|directory|file|vhost|crawl|endpoint|http-analysis|tls|resources|historical-urls)$ ]]; then
+            local live_ep_file="$base_out/$target_slug/http-probe/live_endpoints.txt"
+            if [[ -f "$live_ep_file" ]] && ! grep -q -v '^[[:space:]]*$' "$live_ep_file" 2>/dev/null; then
+                is_not_applicable=true
+                skip_reason="No active HTTP/HTTPS service identified"
+            fi
+        fi
+
         # Determine task status and update metrics.
         if (( exit_code == 0 )); then
-            task_status="COMPLETED"
-            (( ENGINE_COMPLETED_TASKS += 1 ))
-            if declare -f log_success >/dev/null 2>&1; then
-                log_success "[$(( i + 1 ))/$ENGINE_TOTAL_TASKS] Module '$mod' completed for target '$target' (${duration}s)"
+            if [[ "$is_not_applicable" == true ]]; then
+                task_status="NOT APPLICABLE"
+                (( ENGINE_NOT_APPLICABLE_TASKS += 1 ))
+            else
+                task_status="COMPLETED"
+                (( ENGINE_COMPLETED_TASKS += 1 ))
+            fi
+            if [[ "${CLI_QUIET:-false}" != true ]]; then
+                local mod_title_upper="${mod_name^^}"
+                if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    printf '  [%s] %s\n' "$task_idx_str" "$(term_bold "$mod_title_upper")"
+                else
+                    printf '  [%s] %s\n' "$task_idx_str" "$mod_title_upper"
+                fi
+
+                if [[ "$task_status" == "NOT APPLICABLE" ]]; then
+                    if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                        printf '  %-20s: %s\n' "Status" "$(term_yellow "NOT APPLICABLE")"
+                    else
+                        printf '  %-20s: %s\n' "Status" "NOT APPLICABLE"
+                    fi
+                    printf '  %-20s: %s\n\n' "Reason" "$skip_reason"
+                else
+                    if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                        printf '  %-20s: %s\n' "Status" "$(term_green "COMPLETED")"
+                    else
+                        printf '  %-20s: %s\n' "Status" "COMPLETED"
+                    fi
+                    case "$mod" in
+                        host)
+                            local host_cnt=0
+                            if [[ -f "$task_dir/hosts_live.txt" ]]; then
+                                host_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/hosts_live.txt" 2>/dev/null || true)"
+                            elif [[ -f "$task_dir/hosts.txt" ]]; then
+                                host_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/hosts.txt" 2>/dev/null || true)"
+                            fi
+                            host_cnt="${host_cnt:-0}"
+                            if (( host_cnt == 0 )); then
+                                if [[ -f "$task_dir/output.txt" ]] && grep -q "Host is UP" "$task_dir/output.txt" 2>/dev/null; then
+                                    host_cnt=1
+                                elif [[ ! -f "$task_dir/hosts_live.txt" && ! -f "$task_dir/hosts.txt" ]]; then
+                                    host_cnt=1
+                                fi
+                            fi
+                            printf '  %-20s: %d\n\n' "Hosts Discovered" "$host_cnt"
+                            ;;
+                        port)
+                            local open_cnt=0 closed_cnt=0 filtered_cnt=0 ports_scanned=0
+                            if [[ -f "$task_dir/open_ports.txt" ]]; then
+                                open_cnt="$(grep -c -E '^[0-9]+' "$task_dir/open_ports.txt" 2>/dev/null || true)"
+                            fi
+                            open_cnt="${open_cnt:-0}"
+                            if [[ -f "$task_dir/nmap_port.nmap" ]]; then
+                                local c_val f_val
+                                c_val="$(grep -o -E '[0-9]+ closed' "$task_dir/nmap_port.nmap" 2>/dev/null | awk '{print $1}' || true)"
+                                f_val="$(grep -o -E '[0-9]+ filtered' "$task_dir/nmap_port.nmap" 2>/dev/null | awk '{print $1}' || true)"
+                                closed_cnt="${c_val:-0}"
+                                filtered_cnt="${f_val:-0}"
+                            fi
+                            ports_scanned=$(( open_cnt + closed_cnt + filtered_cnt ))
+                            if (( ports_scanned == 0 )); then
+                                if [[ -n "${CONFIG_EFFECTIVE_PORTS:-}" ]]; then
+                                    ports_scanned="$(tr ',' '\n' <<< "$CONFIG_EFFECTIVE_PORTS" | grep -c -v '^[[:space:]]*$' || true)"
+                                else
+                                    ports_scanned=1000
+                                    closed_cnt=$(( ports_scanned - open_cnt ))
+                                fi
+                            fi
+                            printf '  %-20s: %d\n' "Ports Scanned" "$ports_scanned"
+                            printf '  %-20s: %d\n' "Open" "$open_cnt"
+                            printf '  %-20s: %d\n' "Closed" "$closed_cnt"
+                            printf '  %-20s: %d\n\n' "Filtered" "$filtered_cnt"
+                            ;;
+                        service)
+                            local svc_cnt=0
+                            if [[ -f "$task_dir/services.txt" ]]; then
+                                svc_cnt="$(grep -c -v '^[[:space:]]*$' "$task_dir/services.txt" 2>/dev/null || true)"
+                            fi
+                            svc_cnt="${svc_cnt:-0}"
+                            printf '  %-20s: %d\n\n' "Services Identified" "$svc_cnt"
+                            ;;
+                        os)
+                            local os_res="No OS match identified"
+                            if [[ -f "$task_dir/os.txt" && -s "$task_dir/os.txt" ]]; then
+                                os_res="$(head -n 1 "$task_dir/os.txt" 2>/dev/null || echo "No OS match identified")"
+                            elif [[ -f "$task_dir/os_detection.txt" && -s "$task_dir/os_detection.txt" ]]; then
+                                os_res="$(head -n 1 "$task_dir/os_detection.txt" 2>/dev/null || echo "No OS match identified")"
+                            fi
+                            printf '  %-20s: %s\n\n' "Result" "$os_res"
+                            ;;
+                        *)
+                            printf '  %-20s: %s\n\n' "Result" "$result_detail"
+                            ;;
+                    esac
+                fi
+            fi
+            if declare -f _log_write_file >/dev/null 2>&1; then
+                _log_write_file "INFO" "Module '$mod' completed for target '$target' (${duration}s)"
             fi
         elif (( exit_code == 124 )); then
             task_status="TIMEOUT"
             (( ENGINE_TIMEOUT_TASKS += 1 ))
             overall_status=1
-            if declare -f log_warn >/dev/null 2>&1; then
-                log_warn "[$(( i + 1 ))/$ENGINE_TOTAL_TASKS] Module '$mod' timed out after ${timeout_sec}s for target '$target'"
+            if [[ "${CLI_QUIET:-false}" != true ]]; then
+                local mod_title_upper="${mod_name^^}"
+                if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    printf '  [%s] %s\n' "$task_idx_str" "$(term_bold "$mod_title_upper")"
+                    printf '  %-20s: %s\n' "Status" "$(term_yellow "TIMEOUT")"
+                else
+                    printf '  [%s] %s\n' "$task_idx_str" "$mod_title_upper"
+                    printf '  %-20s: %s\n' "Status" "TIMEOUT"
+                fi
+                printf '  %-20s: %s\n\n' "Reason" "Execution timed out after ${timeout_sec}s"
+            fi
+            if declare -f _log_write_file >/dev/null 2>&1; then
+                _log_write_file "WARN" "Module '$mod' timed out after ${timeout_sec}s for target '$target'"
             fi
         else
             task_status="FAILED"
             (( ENGINE_FAILED_TASKS += 1 ))
             overall_status=1
-            if declare -f log_error >/dev/null 2>&1; then
-                log_error "[$(( i + 1 ))/$ENGINE_TOTAL_TASKS] Module '$mod' failed with exit code $exit_code for target '$target'"
+            if [[ "${CLI_QUIET:-false}" != true ]]; then
+                local mod_title_upper="${mod_name^^}"
+                if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    printf '  [%s] %s\n' "$task_idx_str" "$(term_bold "$mod_title_upper")"
+                    printf '  %-20s: %s\n' "Status" "$(term_red "FAILED")"
+                else
+                    printf '  [%s] %s\n' "$task_idx_str" "$mod_title_upper"
+                    printf '  %-20s: %s\n' "Status" "FAILED"
+                fi
+                printf '  %-20s: %s\n\n' "Reason" "Module execution failed with exit code $exit_code"
+            fi
+            if declare -f _log_write_file >/dev/null 2>&1; then
+                _log_write_file "ERROR" "Module '$mod' failed with exit code $exit_code for target '$target'"
             fi
         fi
 

@@ -803,25 +803,31 @@ cli_show_banner() {
         return 0
     fi
 
+    local ver="${APP_VERSION:-1.0.0}"
+    local desc="${APP_DESCRIPTION:-A modular Bash-based network and web reconnaissance toolkit.}"
+
     if declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
         printf '\033[1;36m'
         cat << 'EOF'
-  ____  _____ ____ _  __ ___  _   _ 
- |  _ \| ____/ ___| |/ // _ \| \ | |
- | |_) |  _|| |   | ' /| | | |  \| |
- |  _ <| |__| |___| . \| |_| | |\  |
- |_| \_\_____\____|_|\_\\___/|_| \_|
+    ____  ______________________  _   __
+   / __ \/ ____/ ____/ //_/ __ \/ | / /
+  / /_/ / __/ / /   / ,< / / / /  |/ / 
+ / _, _/ /___/ /___/ /| / /_/ / /|  /  
+/_/ |_/_____/\____/_/ |_\____/_/ |_/   
 EOF
-        printf '\033[0m\033[1;37m  %s\033[0m \033[2m- %s\033[0m\n\n' "${APP_NAME:-RECKON}" "${APP_DESCRIPTION:-A modular Bash-based network and web reconnaissance toolkit.}"
+        printf '\033[0m'
+        printf '  \033[1;37mRECKON\033[0m \033[2m— %s\033[0m\n' "$desc"
+        printf '  \033[1;32mVersion: %s\033[0m\n\n' "$ver"
     else
         cat << 'EOF'
-  ____  _____ ____ _  __ ___  _   _ 
- |  _ \| ____/ ___| |/ // _ \| \ | |
- | |_) |  _|| |   | ' /| | | |  \| |
- |  _ <| |__| |___| . \| |_| | |\  |
- |_| \_\_____\____|_|\_\\___/|_| \_|
+    ____  ______________________  _   __
+   / __ \/ ____/ ____/ //_/ __ \/ | / /
+  / /_/ / __/ / /   / ,< / / / /  |/ / 
+ / _, _/ /___/ /___/ /| / /_/ / /|  /  
+/_/ |_/_____/\____/_/ |_\____/_/ |_/   
 EOF
-        printf '  %s - %s\n\n' "${APP_NAME:-RECKON}" "${APP_DESCRIPTION:-A modular Bash-based network and web reconnaissance toolkit.}"
+        printf '  RECKON — %s\n' "$desc"
+        printf '  Version: %s\n\n' "$ver"
     fi
 
 }

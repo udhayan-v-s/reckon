@@ -179,6 +179,33 @@ deps_get_tool_desc() {
     esac
 }
 
+# Return priority tier for an external security tool: 'required', 'recommended', or 'optional'.
+#
+# Arguments:
+#   $1 - tool command name
+#
+# Returns:
+#   0 always (prints tier name to stdout)
+deps_get_tool_tier() {
+    local tool="${1:-}"
+
+    case "$tool" in
+        curl|dig|ffuf|httpx|nc|nmap|openssl|smbclient)
+            printf '%s\n' "required"
+            ;;
+        dnsx|enum4linux-ng|katana|ssh-audit|subfinder|wafw00f|whatweb)
+            printf '%s\n' "recommended"
+            ;;
+        fping|gau|ssh-keyscan|testssl.sh)
+            printf '%s\n' "optional"
+            ;;
+        *)
+            printf '%s\n' "optional"
+            ;;
+    esac
+    return 0
+}
+
 # Output the canonical list of all supported module identifiers (one per line).
 deps_get_all_modules() {
     local mod
@@ -445,51 +472,143 @@ deps_render_report() {
         done
     done
 
-    # Header
-    printf '%s\n' "================================================================================"
-    if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-        printf '%s - Dependency Status\n' "$(term_bold "RECKON")"
-    else
-        printf 'RECKON - Dependency Status\n'
-    fi
-    printf 'Scope: %s\n' "$scope_text"
-    printf '%s\n' "================================================================================"
+    # Partition tools into tiers
+    local -a req_tools=()
+    local -a rec_tools=()
+    local -a opt_tools=()
+    local tier
+    local req_avail=0 req_missing=0
+    local rec_avail=0 rec_missing=0
+    local opt_avail=0 opt_missing=0
 
-    # Table rows
     for tool in "${sorted_tools[@]}"; do
-        desc="$(deps_get_tool_desc "$tool")"
-
-        # Check if available or missing
-        local is_avail=false
+        tier="$(deps_get_tool_tier "$tool")"
+        local is_tool_avail=false
         local t
         for t in "${DEPS_AVAILABLE_TOOLS[@]}"; do
             if [[ "$t" == "$tool" ]]; then
-                is_avail=true
+                is_tool_avail=true
                 break
             fi
         done
 
-        if [[ "$is_avail" == true ]]; then
-            if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                badge="$(term_green "[FOUND]  ")"
-            else
-                badge="[FOUND]  "
-            fi
-        else
-            if declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                badge="$(term_red "[MISSING]")"
-            else
-                badge="[MISSING]"
-            fi
-        fi
-
-        printf '  %s  %-15s %s\n' "$badge" "$tool" "$desc"
+        case "$tier" in
+            required)
+                req_tools+=("$tool")
+                if [[ "$is_tool_avail" == true ]]; then (( req_avail += 1 )); else (( req_missing += 1 )); fi
+                ;;
+            recommended)
+                rec_tools+=("$tool")
+                if [[ "$is_tool_avail" == true ]]; then (( rec_avail += 1 )); else (( rec_missing += 1 )); fi
+                ;;
+            optional)
+                opt_tools+=("$tool")
+                if [[ "$is_tool_avail" == true ]]; then (( opt_avail += 1 )); else (( opt_missing += 1 )); fi
+                ;;
+        esac
     done
 
+    # Header
+    printf '%s\n' "================================================================================"
+    if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+        printf '                       %s\n' "$(term_bold "RECKON - DEPENDENCY DASHBOARD")"
+    else
+        printf '                       RECKON - DEPENDENCY DASHBOARD\n'
+    fi
+    printf '%s\n\n' "================================================================================"
+    printf '  RECKON - Dependency Status\n'
+    printf '  Scope: %s\n' "$scope_text"
+    if (( ${#DEPS_CHECKED_MODULES[@]} > 0 )); then
+        printf '  Modules: %d\n' "${#DEPS_CHECKED_MODULES[@]}"
+    fi
+    printf '  Unique Tools: %d\n' "$total_count"
+
+    # Helper function to print a tier block
+    _deps_print_tier_block() {
+        local tier_title="$1"
+        shift
+        local -a tools_list=("$@")
+        (( ${#tools_list[@]} == 0 )) && return 0
+
+        printf '\n%s\n' "--------------------------------------------------------------------------------"
+        printf '  %s\n' "$tier_title"
+        printf '%s\n\n' "--------------------------------------------------------------------------------"
+
+        for tool in "${tools_list[@]}"; do
+            desc="$(deps_get_tool_desc "$tool")"
+            local is_avail=false
+            local t
+            for t in "${DEPS_AVAILABLE_TOOLS[@]}"; do
+                if [[ "$t" == "$tool" ]]; then
+                    is_avail=true
+                    break
+                fi
+            done
+
+            if [[ "$is_avail" == true ]]; then
+                if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    badge="$(term_green "[FOUND]  ")"
+                else
+                    badge="[FOUND]  "
+                fi
+            else
+                if declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    badge="$(term_red "[MISSING]")"
+                else
+                    badge="[MISSING]"
+                fi
+            fi
+
+            printf '  %s  %-15s %s\n' "$badge" "$tool" "$desc"
+        done
+    }
+
+    if (( ${#req_tools[@]} > 0 )); then
+        _deps_print_tier_block "REQUIRED DEPENDENCIES" "${req_tools[@]}"
+    fi
+    if (( ${#rec_tools[@]} > 0 )); then
+        _deps_print_tier_block "RECOMMENDED DEPENDENCIES" "${rec_tools[@]}"
+    fi
+    if (( ${#opt_tools[@]} > 0 )); then
+        _deps_print_tier_block "OPTIONAL DEPENDENCIES" "${opt_tools[@]}"
+    fi
+
+    # Determine status string
+    local status_str="SATISFIED"
+    if (( req_missing > 0 )); then
+        status_str="CRITICAL"
+    elif (( rec_missing > 0 || opt_missing > 0 )); then
+        status_str="WARNINGS"
+    fi
+
     # Footer summary
-    printf '%s\n' "--------------------------------------------------------------------------------"
-    printf 'Summary: %d total inspected | %d available | %d missing\n' \
+    printf '\n%s\n' "================================================================================"
+    if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+        printf '  %s\n' "$(term_bold "DEPENDENCY SUMMARY")"
+    else
+        printf '  DEPENDENCY SUMMARY\n'
+    fi
+    printf '%s\n\n' "================================================================================"
+    printf '  Summary: %d total inspected | %d available | %d missing\n' \
         "$total_count" "$avail_count" "$missing_count"
+    printf '  Total Inspected         : %d\n' "$total_count"
+    printf '  Available               : %d\n' "$avail_count"
+    printf '  Missing Required        : %d\n' "$req_missing"
+    printf '  Missing Recommended     : %d\n' "$rec_missing"
+    printf '  Missing Optional        : %d\n\n' "$opt_missing"
+
+    if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+        if [[ "$status_str" == "SATISFIED" ]]; then
+            printf '  Status                  : %s\n' "$(term_green "SATISFIED")"
+        elif [[ "$status_str" == "WARNINGS" ]]; then
+            printf '  Status                  : %s\n' "$(term_yellow "WARNINGS")"
+        else
+            printf '  Status                  : %s\n' "$(term_red "CRITICAL")"
+        fi
+    else
+        printf '  Status                  : %s\n' "$status_str"
+    fi
+    printf '%s\n' "================================================================================"
 
     if (( missing_count == 0 )); then
         if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
@@ -499,11 +618,6 @@ deps_render_report() {
         fi
         return 0
     else
-        if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-            printf '%s\n' "$(term_yellow "Warning: ${missing_count} required tool(s) are missing from PATH.")"
-        else
-            printf 'Warning: %d required tool(s) are missing from PATH.\n' "$missing_count"
-        fi
         return 1
     fi
 }
