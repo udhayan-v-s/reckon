@@ -567,9 +567,12 @@ assert_failure \
     "$MISSING_RESULTS/reckon"
 
 # Test 41: CLI scan generates normalized results.json in output directory.
-if [[ -f "$SCAN_OUT/results.json" && -s "$SCAN_OUT/results.json" ]]; then
+scan_json="$SCAN_OUT/192.0.2.10/results.json"
+[[ ! -f "$scan_json" ]] && scan_json="$SCAN_OUT/results.json"
+
+if [[ -f "$scan_json" && -s "$scan_json" ]]; then
     if command -v jq >/dev/null 2>&1; then
-        if jq -e . "$SCAN_OUT/results.json" >/dev/null 2>&1; then
+        if jq -e . "$scan_json" >/dev/null 2>&1; then
             pass "CLI scan generated valid results.json artifact"
         else
             fail "CLI scan generated invalid results.json (jq validation failed)"
@@ -594,8 +597,13 @@ assert_failure \
     "$MISSING_REPORTING/reckon"
 
 # Test 43: CLI scan generates default reports (report.md and report.txt).
-if [[ -f "$SCAN_OUT/report.md" && -s "$SCAN_OUT/report.md" && \
-      -f "$SCAN_OUT/report.txt" && -s "$SCAN_OUT/report.txt" ]]; then
+scan_md="$SCAN_OUT/192.0.2.10/report.md"
+scan_txt="$SCAN_OUT/192.0.2.10/report.txt"
+[[ ! -f "$scan_md" ]] && scan_md="$SCAN_OUT/report.md"
+[[ ! -f "$scan_txt" ]] && scan_txt="$SCAN_OUT/report.txt"
+
+if [[ -f "$scan_md" && -s "$scan_md" && \
+      -f "$scan_txt" && -s "$scan_txt" ]]; then
     pass "CLI scan generated default human-readable reports (report.md, report.txt)"
 else
     fail "CLI scan missing expected default human-readable reports in $SCAN_OUT"
@@ -627,13 +635,18 @@ assert_success \
     "CLI scan with --format JSON,MD executes successfully" \
     "$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --output "$CUSTOM_FMT_OUT" --format JSON,MD
 
-if [[ -f "$CUSTOM_FMT_OUT/results.json" && -f "$CUSTOM_FMT_OUT/report.md" ]]; then
+custom_json="$CUSTOM_FMT_OUT/192.0.2.10/results.json"
+custom_md="$CUSTOM_FMT_OUT/192.0.2.10/report.md"
+[[ ! -f "$custom_json" ]] && custom_json="$CUSTOM_FMT_OUT/results.json"
+[[ ! -f "$custom_md" ]] && custom_md="$CUSTOM_FMT_OUT/report.md"
+
+if [[ -f "$custom_json" && -f "$custom_md" ]]; then
     pass "CLI scan with --format JSON,MD generated requested report files"
 else
     fail "CLI scan with --format JSON,MD missing requested reports"
 fi
 
-if [[ ! -f "$CUSTOM_FMT_OUT/report.txt" ]]; then
+if [[ ! -f "$CUSTOM_FMT_OUT/report.txt" && ! -f "$CUSTOM_FMT_OUT/192.0.2.10/report.txt" ]]; then
     pass "CLI scan with --format JSON,MD excluded unrequested format (report.txt)"
 else
     fail "CLI scan with --format JSON,MD generated excluded report.txt"

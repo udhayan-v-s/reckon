@@ -949,12 +949,40 @@ results_generate_json() {
 
     local -a target_objs=()
 
+    # If active scan targets are specified in TARGET_VALUE, filter by them
+    local -a active_target_slugs=()
+    if declare -p TARGET_VALUE >/dev/null 2>&1 && (( ${#TARGET_VALUE[@]} > 0 )); then
+        local tv
+        for tv in "${TARGET_VALUE[@]}"; do
+            if declare -f _engine_sanitize_target_dir >/dev/null 2>&1; then
+                active_target_slugs+=("$(_engine_sanitize_target_dir "$tv")")
+            else
+                local s="$tv"
+                s="${s#*://}"
+                s="${s//\//_}"
+                s="${s//:/_}"
+                active_target_slugs+=("$s")
+            fi
+        done
+    fi
+
     # Discover all target directories (subdirectories containing module folders)
     local t_dir
     while IFS= read -r t_dir || [[ -n "$t_dir" ]]; do
         [[ -z "$t_dir" || ! -d "$t_dir" ]] && continue
         local t_name
         t_name="$(basename "$t_dir")"
+
+        if (( ${#active_target_slugs[@]} > 0 )); then
+            local is_active=false act_slug
+            for act_slug in "${active_target_slugs[@]}"; do
+                if [[ "$t_name" == "$act_slug" ]]; then
+                    is_active=true
+                    break
+                fi
+            done
+            [[ "$is_active" == false ]] && continue
+        fi
 
         # Determine target type
         local t_type="domain"

@@ -77,22 +77,25 @@ else
 fi
 
 # Verify default generated report files: results.json, report.md, report.txt
-if [[ -f "$OUT_DIR_STAGE1/results.json" && -s "$OUT_DIR_STAGE1/results.json" && \
-      -f "$OUT_DIR_STAGE1/report.md" && -s "$OUT_DIR_STAGE1/report.md" && \
-      -f "$OUT_DIR_STAGE1/report.txt" && -s "$OUT_DIR_STAGE1/report.txt" ]]; then
+REP_DIR_STAGE1="$OUT_DIR_STAGE1/default.corp"
+[[ ! -f "$REP_DIR_STAGE1/results.json" ]] && REP_DIR_STAGE1="$OUT_DIR_STAGE1"
+
+if [[ -f "$REP_DIR_STAGE1/results.json" && -s "$REP_DIR_STAGE1/results.json" && \
+      -f "$REP_DIR_STAGE1/report.md" && -s "$REP_DIR_STAGE1/report.md" && \
+      -f "$REP_DIR_STAGE1/report.txt" && -s "$REP_DIR_STAGE1/report.txt" ]]; then
     pass "scan automatically generates default report bundle (results.json, report.md, report.txt)"
 else
-    fail "missing expected default report files in $OUT_DIR_STAGE1"
+    fail "missing expected default report files in $REP_DIR_STAGE1"
 fi
 
 # Validate JSON schema and content
 if command -v jq >/dev/null 2>&1; then
-    if jq -e . "$OUT_DIR_STAGE1/results.json" >/dev/null 2>&1; then
+    if jq -e . "$REP_DIR_STAGE1/results.json" >/dev/null 2>&1; then
         pass "results.json parses cleanly with jq"
     else
         fail "results.json failed jq syntax validation"
     fi
-    t_count="$(jq -r '.summary.total_targets // 0' "$OUT_DIR_STAGE1/results.json")"
+    t_count="$(jq -r '.summary.total_targets // 0' "$REP_DIR_STAGE1/results.json")"
     if (( t_count >= 1 )); then
         pass "results.json contains accurate target count ($t_count)"
     else
@@ -101,7 +104,7 @@ if command -v jq >/dev/null 2>&1; then
 fi
 
 # Validate Markdown report sections
-md_content="$(cat "$OUT_DIR_STAGE1/report.md")"
+md_content="$(cat "$REP_DIR_STAGE1/report.md")"
 if [[ "$md_content" == *"# RECKON Reconnaissance Assessment Report"* && \
       "$md_content" == *"## Executive Summary"* && \
       "$md_content" == *"## Target: default.corp"* ]]; then
@@ -111,7 +114,7 @@ else
 fi
 
 # Validate Plain Text report sections
-txt_content="$(cat "$OUT_DIR_STAGE1/report.txt")"
+txt_content="$(cat "$REP_DIR_STAGE1/report.txt")"
 if [[ "$txt_content" == *"RECKON RECONNAISSANCE ASSESSMENT REPORT"* && \
       "$txt_content" == *"TARGET: default.corp"* ]]; then
     pass "report.txt contains structured ASCII banner and target breakdown"
@@ -120,9 +123,9 @@ else
 fi
 
 # Validate 0640 permissions on all generated report files
-perm_json="$(stat -c '%a' "$OUT_DIR_STAGE1/results.json" 2>/dev/null || stat -f '%p' "$OUT_DIR_STAGE1/results.json" 2>/dev/null)"
-perm_md="$(stat -c '%a' "$OUT_DIR_STAGE1/report.md" 2>/dev/null || stat -f '%p' "$OUT_DIR_STAGE1/report.md" 2>/dev/null)"
-perm_txt="$(stat -c '%a' "$OUT_DIR_STAGE1/report.txt" 2>/dev/null || stat -f '%p' "$OUT_DIR_STAGE1/report.txt" 2>/dev/null)"
+perm_json="$(stat -c '%a' "$REP_DIR_STAGE1/results.json" 2>/dev/null || stat -f '%p' "$REP_DIR_STAGE1/results.json" 2>/dev/null)"
+perm_md="$(stat -c '%a' "$REP_DIR_STAGE1/report.md" 2>/dev/null || stat -f '%p' "$REP_DIR_STAGE1/report.md" 2>/dev/null)"
+perm_txt="$(stat -c '%a' "$REP_DIR_STAGE1/report.txt" 2>/dev/null || stat -f '%p' "$REP_DIR_STAGE1/report.txt" 2>/dev/null)"
 
 perm_json="${perm_json: -3}"
 perm_md="${perm_md: -3}"
@@ -144,13 +147,16 @@ TARGET_STAGE2="singlefmt.corp"
 
 "$RECKON_BIN" --module host --target "$TARGET_STAGE2" --output "$OUT_DIR_STAGE2" --format MD >/dev/null 2>&1 || true
 
-if [[ -f "$OUT_DIR_STAGE2/report.md" && -s "$OUT_DIR_STAGE2/report.md" ]]; then
+REP_DIR_STAGE2="$OUT_DIR_STAGE2/singlefmt.corp"
+[[ ! -f "$REP_DIR_STAGE2/report.md" ]] && REP_DIR_STAGE2="$OUT_DIR_STAGE2"
+
+if [[ -f "$REP_DIR_STAGE2/report.md" && -s "$REP_DIR_STAGE2/report.md" ]]; then
     pass "--format MD generates requested Markdown report"
 else
     fail "--format MD failed to generate report.md"
 fi
 
-if [[ ! -f "$OUT_DIR_STAGE2/report.txt" ]]; then
+if [[ ! -f "$REP_DIR_STAGE2/report.txt" && ! -f "$OUT_DIR_STAGE2/report.txt" ]]; then
     pass "--format MD excludes unrequested report format (report.txt)"
 else
     fail "--format MD generated unrequested report format (report.txt)"
@@ -166,11 +172,14 @@ TARGET_STAGE3="dashboard.corp"
 
 "$RECKON_BIN" --module host --target "$TARGET_STAGE3" --output "$OUT_DIR_STAGE3" --format MD,TXT >/dev/null 2>&1 || true
 
-if [[ -f "$OUT_DIR_STAGE3/report.md" && -s "$OUT_DIR_STAGE3/report.md" && \
-      -f "$OUT_DIR_STAGE3/report.txt" && -s "$OUT_DIR_STAGE3/report.txt" ]]; then
+REP_DIR_STAGE3="$OUT_DIR_STAGE3/dashboard.corp"
+[[ ! -f "$REP_DIR_STAGE3/report.md" ]] && REP_DIR_STAGE3="$OUT_DIR_STAGE3"
+
+if [[ -f "$REP_DIR_STAGE3/report.md" && -s "$REP_DIR_STAGE3/report.md" && \
+      -f "$REP_DIR_STAGE3/report.txt" && -s "$REP_DIR_STAGE3/report.txt" ]]; then
     pass "--format MD,TXT generates both Markdown and plain text reports"
 else
-    fail "missing expected MD or TXT report files in $OUT_DIR_STAGE3"
+    fail "missing expected MD or TXT report files in $REP_DIR_STAGE3"
 fi
 
 # Generate and verify standalone HTML report via reporting engine

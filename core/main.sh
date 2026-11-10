@@ -313,7 +313,7 @@ reckon_main() {
                     fi
                 fi
 
-                # Synchronize and copy generated reports into individual target directories
+                # Synchronize and move generated reports into target directories
                 local -a displayed_report_files=()
                 local t_val
                 for t_val in "${TARGET_VALUE[@]}"; do
@@ -334,25 +334,33 @@ reckon_main() {
                     fi
                 done
 
-                # If single target was scanned, present target directory report paths
+                # When a single target is assessed, remove reports from top-level output directory
+                # so they reside exclusively inside the target directory.
                 if (( ${#TARGET_VALUE[@]} == 1 )); then
-                    local single_slug="$(_engine_sanitize_target_dir "${TARGET_VALUE[0]}")"
-                    local single_tdir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${single_slug}"
-                    if [[ -d "$single_tdir" ]]; then
+                    local r_gen
+                    for r_gen in "${REPORTING_GENERATED_FILES[@]}"; do
+                        if [[ -f "$r_gen" ]]; then
+                            rm -f "$r_gen"
+                        fi
+                    done
+                fi
+
+                # Present target directory report paths
+                if (( ${#TARGET_VALUE[@]} > 0 )); then
+                    local target_display_slug="$(_engine_sanitize_target_dir "${TARGET_VALUE[0]}")"
+                    local target_display_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${target_display_slug}"
+                    if [[ -d "$target_display_dir" ]]; then
                         local r_gen
                         for r_gen in "${REPORTING_GENERATED_FILES[@]}"; do
                             local r_base
                             r_base="$(basename "$r_gen")"
-                            if [[ -f "${single_tdir}/${r_base}" ]]; then
-                                displayed_report_files+=("${single_tdir}/${r_base}")
-                            else
-                                displayed_report_files+=("$r_gen")
+                            if [[ -f "${target_display_dir}/${r_base}" ]]; then
+                                displayed_report_files+=("${target_display_dir}/${r_base}")
                             fi
                         done
-                    else
-                        displayed_report_files=("${REPORTING_GENERATED_FILES[@]}")
                     fi
-                else
+                fi
+                if (( ${#displayed_report_files[@]} == 0 )); then
                     displayed_report_files=("${REPORTING_GENERATED_FILES[@]}")
                 fi
             fi
@@ -373,26 +381,53 @@ reckon_main() {
             local svcs_disc=0
             local web_svcs=0
 
-            if [[ -d "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" ]]; then
-                hosts_disc="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/host/hosts_live.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
-                open_ports="$(grep -h -E '^[0-9]+' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/port/open_ports.txt 2>/dev/null | sort -u | grep -c -v '^[[:space:]]*$' || true)"
-                svcs_disc="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/service/services.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
-                web_svcs="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/http-probe/live_web.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
-                if (( web_svcs == 0 )); then
-                    web_svcs="$(grep -h -c -v '^[[:space:]]*$' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"/*/http-probe/live_endpoints.txt 2>/dev/null | awk '{s+=$1} END {print s+0}')"
+            local t_item
+            for t_item in "${TARGET_VALUE[@]}"; do
+                local t_slug_scan="$(_engine_sanitize_target_dir "$t_item")"
+                local t_dir_scan="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug_scan}"
+                if [[ -d "$t_dir_scan" ]]; then
+                    local h_c=0 o_c=0 s_c=0 w_c=0
+                    if [[ -f "$t_dir_scan/host/hosts_live.txt" ]]; then
+                        h_c="$(grep -c -v '^[[:space:]]*$' "$t_dir_scan/host/hosts_live.txt" 2>/dev/null || true)"
+                    fi
+                    h_c="${h_c:-0}"
+                    (( hosts_disc += h_c ))
+
+                    if [[ -f "$t_dir_scan/port/open_ports.txt" ]]; then
+                        o_c="$(grep -c -E '^[0-9]+' "$t_dir_scan/port/open_ports.txt" 2>/dev/null || true)"
+                    fi
+                    o_c="${o_c:-0}"
+                    (( open_ports += o_c ))
+
+                    if [[ -f "$t_dir_scan/service/services.txt" ]]; then
+                        s_c="$(grep -c -v '^[[:space:]]*$' "$t_dir_scan/service/services.txt" 2>/dev/null || true)"
+                    fi
+                    s_c="${s_c:-0}"
+                    (( svcs_disc += s_c ))
+
+                    if [[ -f "$t_dir_scan/http-probe/live_web.txt" ]]; then
+                        w_c="$(grep -c -v '^[[:space:]]*$' "$t_dir_scan/http-probe/live_web.txt" 2>/dev/null || true)"
+                    elif [[ -f "$t_dir_scan/http-probe/live_endpoints.txt" ]]; then
+                        w_c="$(grep -c -v '^[[:space:]]*$' "$t_dir_scan/http-probe/live_endpoints.txt" 2>/dev/null || true)"
+                    fi
+                    w_c="${w_c:-0}"
+                    (( web_svcs += w_c ))
                 fi
-            fi
+            done
 
             if (( hosts_disc == 0 )) && (( ${#TARGET_VALUE[@]} > 0 )); then
                 hosts_disc="${#TARGET_VALUE[@]}"
             fi
 
-            # Synchronize metrics from generated results.json if available
-            if [[ -f "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" ]]; then
+            # Synchronize metrics from generated results.json inside target directory if available
+            local target_sub_dir="$(_engine_sanitize_target_dir "${TARGET_VALUE[0]:-}")"
+            local check_json="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${target_sub_dir}/results.json"
+            [[ ! -f "$check_json" ]] && check_json="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json"
+            if [[ -f "$check_json" ]]; then
                 local json_hosts json_ports json_urls
-                json_hosts="$(jq -r '.summary.total_hosts_up // empty' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" 2>/dev/null || true)"
-                json_ports="$(jq -r '.summary.total_open_ports // empty' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" 2>/dev/null || true)"
-                json_urls="$(jq -r '.summary.total_web_endpoints // empty' "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json" 2>/dev/null || true)"
+                json_hosts="$(jq -r '.summary.total_hosts_up // empty' "$check_json" 2>/dev/null || true)"
+                json_ports="$(jq -r '.summary.total_open_ports // empty' "$check_json" 2>/dev/null || true)"
+                json_urls="$(jq -r '.summary.total_web_endpoints // empty' "$check_json" 2>/dev/null || true)"
                 [[ -n "$json_hosts" && "$json_hosts" =~ ^[0-9]+$ ]] && (( json_hosts > hosts_disc )) && hosts_disc="$json_hosts"
                 [[ -n "$json_ports" && "$json_ports" =~ ^[0-9]+$ ]] && (( json_ports > open_ports )) && open_ports="$json_ports"
                 [[ -n "$json_urls" && "$json_urls" =~ ^[0-9]+$ ]] && urls_disc="$json_urls"
