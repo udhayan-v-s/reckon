@@ -103,6 +103,15 @@ reckon_main() {
         exit "$parse_status"
     fi
 
+    # When no arguments are provided, display the startup banner, version, and help.
+    if (( $# == 0 )); then
+        term_init "$CLI_COLOR_MODE"
+        cli_show_banner
+        printf 'Version: %s\n\n' "$APP_VERSION"
+        cli_show_help
+        return 0
+    fi
+
     # Display help when requested.
     if [[ "$CLI_HELP" == true ]]; then
         cli_show_help
@@ -127,6 +136,7 @@ reckon_main() {
     config_init
 
     # Set the configuration file selected through the CLI.
+    # shellcheck disable=SC2034
     CONFIG_FILE="$CLI_CONFIG"
 
     # Load the configuration file.
@@ -182,7 +192,10 @@ reckon_main() {
         done
     fi
 
-    # Application identity display.
+    # Application identity banner display.
+    if [[ "$CLI_NO_BANNER" == false && "$CLI_QUIET" == false ]]; then
+        cli_show_banner
+    fi
     printf '%s\n' "$APP_NAME"
     printf 'Version: %s\n' "$APP_VERSION"
     printf '%s\n' "$APP_DESCRIPTION"
@@ -252,6 +265,10 @@ reckon_main() {
         fi
 
         exit "$scan_status"
+    else
+        printf '\n'
+        cli_show_help
+        return 0
     fi
 
 }

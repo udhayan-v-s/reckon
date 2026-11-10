@@ -93,7 +93,7 @@ cli_parse_args() {
                 ;;
 
             # Request an environment and dependency check.
-            --check)
+            --check|--check-deps|-c)
 
                 CLI_CHECK=true
                 shift
@@ -138,7 +138,7 @@ cli_parse_args() {
                 ;;
 
             # Custom module selection.
-            --module)
+            --module|--modules|-M)
 
                 if ! cli_require_value "$1" "$#" "${2-}"; then
                     return 2
@@ -153,7 +153,7 @@ cli_parse_args() {
                 ;;
 
             # Module exclusion.
-            --exclude|-x)
+            --exclude|--exclude-modules|-x)
 
                 if ! cli_require_value "$1" "$#" "${2-}"; then
                     return 2
@@ -176,6 +176,36 @@ cli_parse_args() {
 
                 CLI_PROFILE="$2"
                 CLI_EXPLICIT[profile]=true
+                shift 2
+                ;;
+
+            # Scan mode selection.
+            --mode|-m)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                case "${2,,}" in
+                    network|net)
+                        CLI_NETWORK=true
+                        CLI_EXPLICIT[network]=true
+                        ;;
+                    web)
+                        CLI_WEB=true
+                        CLI_EXPLICIT[web]=true
+                        ;;
+                    all|both|full)
+                        CLI_NETWORK=true
+                        CLI_WEB=true
+                        CLI_EXPLICIT[network]=true
+                        CLI_EXPLICIT[web]=true
+                        ;;
+                    *)
+                        printf 'Error: Invalid scan mode: %s (expected: network, web, all)\n' "$2" >&2
+                        return 2
+                        ;;
+                esac
                 shift 2
                 ;;
 
@@ -299,7 +329,7 @@ cli_parse_args() {
                 ;;
 
             # Report format selection.
-            --format|-f)
+            --format|--report|-f)
 
                 if ! cli_require_value "$1" "$#" "${2-}"; then
                     return 2
@@ -480,6 +510,9 @@ cli_validate_reporting() {
         JSON
         TXT
         MD
+        HTML
+        CSV
+        ALL
     )
 
     # Reject report formats when report generation is disabled.
@@ -505,7 +538,7 @@ cli_validate_reporting() {
 
         if [[ "$is_valid" == false ]]; then
             printf 'Error: Unsupported report format: %s\n' "$format" >&2
-            printf 'Supported formats: JSON, TXT, MD.\n' >&2
+            printf 'Supported formats: JSON, HTML, MD, TXT, CSV, ALL.\n' >&2
             return 2
         fi
 
@@ -763,6 +796,36 @@ cli_append_unique_csv() {
     return 0
 }
 
+# Display the ASCII art application banner.
+cli_show_banner() {
+
+    if [[ "${CLI_NO_BANNER:-false}" == true || "${CLI_QUIET:-false}" == true ]]; then
+        return 0
+    fi
+
+    if declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+        printf '\033[1;36m'
+        cat << 'EOF'
+  ____  _____ ____ _  __ ___  _   _ 
+ |  _ \| ____/ ___| |/ // _ \| \ | |
+ | |_) |  _|| |   | ' /| | | |  \| |
+ |  _ <| |__| |___| . \| |_| | |\  |
+ |_| \_\_____\____|_|\_\\___/|_| \_|
+EOF
+        printf '\033[0m\033[1;37m  %s\033[0m \033[2m- %s\033[0m\n\n' "${APP_NAME:-RECKON}" "${APP_DESCRIPTION:-A modular Bash-based network and web reconnaissance toolkit.}"
+    else
+        cat << 'EOF'
+  ____  _____ ____ _  __ ___  _   _ 
+ |  _ \| ____/ ___| |/ // _ \| \ | |
+ | |_) |  _|| |   | ' /| | | |  \| |
+ |  _ <| |__| |___| . \| |_| | |\  |
+ |_| \_\_____\____|_|\_\\___/|_| \_|
+EOF
+        printf '  %s - %s\n\n' "${APP_NAME:-RECKON}" "${APP_DESCRIPTION:-A modular Bash-based network and web reconnaissance toolkit.}"
+    fi
+
+}
+
 # Display command-line help.
 
 cli_show_help() {
@@ -777,7 +840,7 @@ General options:
     -h, --help                  Display this help message.
     -V, --version               Display application version.
         --no-banner             Suppress the startup banner.
-        --check                 Check the environment and dependencies.
+    -c, --check, --check-deps   Check the environment and dependencies.
         --list-modules          List available reconnaissance modules.
         --dry-run               Simulate scan execution without running tools.
 
@@ -788,13 +851,14 @@ Target options:
 Scan selection:
     -n, --network               Select network reconnaissance.
     -w, --web                   Select web reconnaissance.
-        --module MODULES        Select specific reconnaissance modules.
-    -x, --exclude MODULES       Exclude specified reconnaissance modules.
+    -m, --mode MODE             Select scan mode (network, web, all).
+        --module, --modules MOD Select specific reconnaissance modules.
+    -x, --exclude MODS          Exclude specified reconnaissance modules.
         --profile PROFILE       Select a scan profile.
 
 Output and reporting:
     -o, --output DIR            Specify the output directory.
-    -f, --format FORMATS        Specify report formats (JSON, TXT, MD).
+    -f, --format, --report FMTS Specify report formats (JSON, HTML, MD, TXT, CSV, ALL).
         --no-report             Disable report generation.
         --log-file FILE         Specify the log file.
 
@@ -817,13 +881,14 @@ Display options:
 Examples:
     reckon --help
     reckon --version
+    reckon --check-deps
     reckon --target example.com
     reckon --target 192.0.2.10 --network
     reckon --target https://example.com --web
-    reckon --target example.com --network --web
-    reckon --target example.com --module host,dns
+    reckon --target example.com --mode all
+    reckon --target example.com --modules host,dns
     reckon --target example.com --network --dry-run
-    reckon --target example.com --web --format JSON,MD
+    reckon --target example.com --web --report all
     reckon --target example.com --network --debug --no-color
 
 For more information, see the project README.
