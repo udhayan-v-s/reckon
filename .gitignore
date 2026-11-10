@@ -18,6 +18,10 @@ temp/
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.crt
+*.pfx
 
 # Local configuration
 config/local.conf
