@@ -532,10 +532,10 @@ assert_success_output \
     "Error:" \
     "$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --output "$SCAN_OUT"
 
-if [[ -f "$SCAN_OUT/192.0.2.10/host/stdout.log" && -f "$SCAN_OUT/192.0.2.10/host/output.txt" ]]; then
-    pass "CLI execution generated module output files"
+if [[ -d "$SCAN_OUT/192.0.2.10" && ! -d "$SCAN_OUT/192.0.2.10/host" ]]; then
+    pass "CLI execution created target folder and suppressed persistent raw module folders"
 else
-    fail "CLI execution missing expected output files in $SCAN_OUT"
+    fail "CLI execution leaked raw module directories or missing target folder in $SCAN_OUT"
 fi
 
 # Test 38: CLI execution records audit log entry when log file is configured.
@@ -615,15 +615,18 @@ assert_success \
     "CLI scan with --no-report executes successfully" \
     "$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --output "$NO_REPORT_OUT" --no-report
 
-if [[ -f "$NO_REPORT_OUT/192.0.2.10/host/output.txt" ]]; then
-    pass "CLI scan with --no-report created module output artifacts"
+if [[ -d "$NO_REPORT_OUT/192.0.2.10" && ! -d "$NO_REPORT_OUT/192.0.2.10/host" ]]; then
+    pass "CLI scan with --no-report created target directory without raw module folders"
 else
-    fail "CLI scan with --no-report missing module output artifacts"
+    fail "CLI scan with --no-report leaked module output artifacts"
 fi
 
 if [[ ! -f "$NO_REPORT_OUT/results.json" && \
       ! -f "$NO_REPORT_OUT/report.md" && \
-      ! -f "$NO_REPORT_OUT/report.txt" ]]; then
+      ! -f "$NO_REPORT_OUT/report.txt" && \
+      ! -f "$NO_REPORT_OUT/192.0.2.10/results.json" && \
+      ! -f "$NO_REPORT_OUT/192.0.2.10/report.md" && \
+      ! -f "$NO_REPORT_OUT/192.0.2.10/report.txt" ]]; then
     pass "CLI scan with --no-report created no report files in output directory"
 else
     fail "CLI scan with --no-report generated unwanted report files"

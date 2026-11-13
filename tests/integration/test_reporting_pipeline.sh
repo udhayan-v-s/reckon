@@ -170,22 +170,23 @@ printf '\n%s\n' "Stage 3: Multi-Format Selection & Standalone HTML Dashboard Gen
 OUT_DIR_STAGE3="$TEST_ROOT/multi_format_reports"
 TARGET_STAGE3="dashboard.corp"
 
-"$RECKON_BIN" --module host --target "$TARGET_STAGE3" --output "$OUT_DIR_STAGE3" --format MD,TXT >/dev/null 2>&1 || true
+"$RECKON_BIN" --module host --target "$TARGET_STAGE3" --output "$OUT_DIR_STAGE3" --format JSON,MD,TXT >/dev/null 2>&1 || true
 
 REP_DIR_STAGE3="$OUT_DIR_STAGE3/dashboard.corp"
 [[ ! -f "$REP_DIR_STAGE3/report.md" ]] && REP_DIR_STAGE3="$OUT_DIR_STAGE3"
 
-if [[ -f "$REP_DIR_STAGE3/report.md" && -s "$REP_DIR_STAGE3/report.md" && \
+if [[ -f "$REP_DIR_STAGE3/results.json" && -s "$REP_DIR_STAGE3/results.json" && \
+      -f "$REP_DIR_STAGE3/report.md" && -s "$REP_DIR_STAGE3/report.md" && \
       -f "$REP_DIR_STAGE3/report.txt" && -s "$REP_DIR_STAGE3/report.txt" ]]; then
-    pass "--format MD,TXT generates both Markdown and plain text reports"
+    pass "--format JSON,MD,TXT generates JSON, Markdown, and plain text reports"
 else
-    fail "missing expected MD or TXT report files in $REP_DIR_STAGE3"
+    fail "missing expected JSON, MD or TXT report files in $REP_DIR_STAGE3"
 fi
 
 # Generate and verify standalone HTML report via reporting engine
 # shellcheck source=lib/reporting.sh
 source "$PROJECT_ROOT/lib/reporting.sh"
-reporting_export_html "$OUT_DIR_STAGE3" "$OUT_DIR_STAGE3/report.html"
+reporting_export_html "$REP_DIR_STAGE3" "$OUT_DIR_STAGE3/report.html"
 
 if [[ -f "$OUT_DIR_STAGE3/report.html" && -s "$OUT_DIR_STAGE3/report.html" ]]; then
     pass "reporting_export_html creates non-empty report.html"
@@ -221,18 +222,21 @@ TARGET_STAGE4="suppressed.corp"
 
 "$RECKON_BIN" --module host --target "$TARGET_STAGE4" --output "$OUT_DIR_STAGE4" --no-report >/dev/null 2>&1 || true
 
-# Verify module output was created
-if [[ -f "$OUT_DIR_STAGE4/$TARGET_STAGE4/host/output.txt" ]]; then
-    pass "--no-report preserves module output and raw artifact files"
+# Verify raw module directory was cleaned up and not persisted
+if [[ ! -d "$OUT_DIR_STAGE4/$TARGET_STAGE4/host" ]]; then
+    pass "--no-report leaves no persistent module directories or raw output"
 else
-    fail "missing module output file in $OUT_DIR_STAGE4/$TARGET_STAGE4/host"
+    fail "--no-report left unexpected module output in $OUT_DIR_STAGE4/$TARGET_STAGE4/host"
 fi
 
-# Verify NO reports exist in output root
+# Verify NO reports exist in output root or target directory
 if [[ ! -f "$OUT_DIR_STAGE4/results.json" && \
       ! -f "$OUT_DIR_STAGE4/report.md" && \
       ! -f "$OUT_DIR_STAGE4/report.txt" && \
-      ! -f "$OUT_DIR_STAGE4/report.html" ]]; then
+      ! -f "$OUT_DIR_STAGE4/report.html" && \
+      ! -f "$OUT_DIR_STAGE4/$TARGET_STAGE4/results.json" && \
+      ! -f "$OUT_DIR_STAGE4/$TARGET_STAGE4/report.md" && \
+      ! -f "$OUT_DIR_STAGE4/$TARGET_STAGE4/report.txt" ]]; then
     pass "--no-report suppresses all report file generation (results.json, report.md, report.txt, report.html)"
 else
     fail "--no-report generated unwanted report files"
@@ -254,28 +258,28 @@ OUT_DIR_STAGE5="$TEST_ROOT/multi_reports"
 
 "$RECKON_BIN" --module host --targets-file "$TARGETS_FILE" --output "$OUT_DIR_STAGE5" >/dev/null 2>&1 || true
 
-if [[ -f "$OUT_DIR_STAGE5/results.json" && -f "$OUT_DIR_STAGE5/report.md" && -f "$OUT_DIR_STAGE5/report.txt" ]]; then
-    pass "multi-target scan generates unified report files"
+if [[ -f "$OUT_DIR_STAGE5/target1.corp/results.json" && -f "$OUT_DIR_STAGE5/target1.corp/report.md" && -f "$OUT_DIR_STAGE5/target1.corp/report.txt" && \
+      -f "$OUT_DIR_STAGE5/target2.corp/results.json" && -f "$OUT_DIR_STAGE5/target2.corp/report.md" && -f "$OUT_DIR_STAGE5/target2.corp/report.txt" && \
+      -f "$OUT_DIR_STAGE5/192.0.2.10/results.json" && -f "$OUT_DIR_STAGE5/192.0.2.10/report.md" && -f "$OUT_DIR_STAGE5/192.0.2.10/report.txt" ]]; then
+    pass "multi-target scan generates report files in target-specific folders"
 else
-    fail "multi-target scan failed to generate expected report bundle"
+    fail "multi-target scan failed to generate expected report bundles in target folders"
 fi
 
 if command -v jq >/dev/null 2>&1; then
-    m_count="$(jq -r '.summary.total_targets // 0' "$OUT_DIR_STAGE5/results.json")"
-    if (( m_count == 3 )); then
-        pass "results.json aggregates all 3 targets in summary counter"
+    m_count="$(jq -r '.summary.total_targets // 0' "$OUT_DIR_STAGE5/target1.corp/results.json")"
+    if (( m_count == 1 )); then
+        pass "target results.json isolates findings for target1.corp"
     else
-        fail "results.json target count mismatch: expected 3, found $m_count"
+        fail "results.json target count mismatch: expected 1, found $m_count"
     fi
 fi
 
-multi_md="$(cat "$OUT_DIR_STAGE5/report.md")"
-if [[ "$multi_md" == *"Target: target1.corp"* && \
-      "$multi_md" == *"Target: target2.corp"* && \
-      "$multi_md" == *"Target: 192.0.2.10"* ]]; then
-    pass "report.md contains dedicated sections for all 3 scanned targets"
+multi_md="$(cat "$OUT_DIR_STAGE5/target1.corp/report.md")"
+if [[ "$multi_md" == *"Target: target1.corp"* ]]; then
+    pass "report.md contains dedicated target assessment section"
 else
-    fail "report.md missing one or more target sections"
+    fail "report.md missing target section"
 fi
 
 # -----------------------------------------------------------------------------

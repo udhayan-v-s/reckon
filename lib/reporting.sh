@@ -46,6 +46,19 @@ _reporting_ensure_results_json() {
     local output_dir="${1:-}"
     local results_file="${output_dir}/results.json"
 
+    if [[ -f "$results_file" && -s "$results_file" ]]; then
+        return 0
+    fi
+
+    # Check immediate subdirectories for existing target results.json
+    local sub_json
+    while IFS= read -r sub_json || [[ -n "$sub_json" ]]; do
+        if [[ -f "$sub_json" && -s "$sub_json" ]]; then
+            cp -f "$sub_json" "$results_file" 2>/dev/null || true
+            return 0
+        fi
+    done < <(find "$output_dir" -mindepth 2 -maxdepth 2 -name "results.json" 2>/dev/null | sort)
+
     if declare -f results_generate_json >/dev/null 2>&1; then
         results_generate_json "$output_dir" "$results_file" || true
     fi
@@ -88,11 +101,13 @@ reporting_export_markdown() {
 
     # Extract metadata using jq
     local app_name app_version scan_ts total_targets
-    local hosts_up open_ports subdomains endpoints security_issues
+    local hosts_up open_ports subdomains endpoints security_issues meta_out
 
     app_name="$(jq -r '.scan_metadata.app_name // "RECKON"' "$results_file" 2>/dev/null)"
     app_version="$(jq -r '.scan_metadata.app_version // "1.0.0"' "$results_file" 2>/dev/null)"
     scan_ts="$(jq -r '.scan_metadata.timestamp // "Unknown"' "$results_file" 2>/dev/null)"
+    meta_out="$(jq -r '.scan_metadata.output_directory // empty' "$results_file" 2>/dev/null || true)"
+    [[ -z "$meta_out" ]] && meta_out="$output_dir"
     total_targets="$(jq -r '.summary.total_targets // 0' "$results_file" 2>/dev/null)"
     hosts_up="$(jq -r '.summary.total_hosts_up // 0' "$results_file" 2>/dev/null)"
     open_ports="$(jq -r '.summary.total_open_ports // 0' "$results_file" 2>/dev/null)"
@@ -104,7 +119,7 @@ reporting_export_markdown() {
         printf '# %s Reconnaissance Assessment Report\n\n' "$app_name"
         printf '**Generated:** %s  \n' "$scan_ts"
         printf '**Application:** %s v%s  \n' "$app_name" "$app_version"
-        printf '**Output Directory:** `%s`  \n' "$output_dir"
+        printf '**Output Directory:** `%s`  \n' "$meta_out"
         printf '**Total Targets Assessed:** %s  \n\n' "$total_targets"
         printf -- '---\n\n'
 
@@ -616,11 +631,13 @@ reporting_export_text() {
     local raw_txt_tmp="${out_file}.tmp"
 
     local app_name app_version scan_ts total_targets
-    local hosts_up open_ports subdomains endpoints security_issues
+    local hosts_up open_ports subdomains endpoints security_issues meta_out
 
     app_name="$(jq -r '.scan_metadata.app_name // "RECKON"' "$results_file" 2>/dev/null)"
     app_version="$(jq -r '.scan_metadata.app_version // "1.0.0"' "$results_file" 2>/dev/null)"
     scan_ts="$(jq -r '.scan_metadata.timestamp // "Unknown"' "$results_file" 2>/dev/null)"
+    meta_out="$(jq -r '.scan_metadata.output_directory // empty' "$results_file" 2>/dev/null || true)"
+    [[ -z "$meta_out" ]] && meta_out="$output_dir"
     total_targets="$(jq -r '.summary.total_targets // 0' "$results_file" 2>/dev/null)"
     hosts_up="$(jq -r '.summary.total_hosts_up // 0' "$results_file" 2>/dev/null)"
     open_ports="$(jq -r '.summary.total_open_ports // 0' "$results_file" 2>/dev/null)"
@@ -638,7 +655,7 @@ reporting_export_text() {
         printf '   Version              : %s\n' "$app_version"
         printf '   Assessment Type      : Reconnaissance Assessment\n'
         printf '   Generated            : %s\n' "$scan_ts"
-        printf '   Output Directory     : %s\n\n' "$output_dir"
+        printf '   Output Directory     : %s\n\n' "$meta_out"
 
         printf '2. EXECUTIVE SUMMARY\n'
         printf '   Targets              : %s\n' "$total_targets"
@@ -1076,11 +1093,13 @@ reporting_export_html() {
     local raw_html_tmp="${out_file}.tmp"
 
     local app_name app_version scan_ts total_targets
-    local hosts_up open_ports subdomains endpoints security_issues
+    local hosts_up open_ports subdomains endpoints security_issues meta_out
 
     app_name="$(jq -r '.scan_metadata.app_name // "RECKON"' "$results_file" 2>/dev/null)"
     app_version="$(jq -r '.scan_metadata.app_version // "1.0.0"' "$results_file" 2>/dev/null)"
     scan_ts="$(jq -r '.scan_metadata.timestamp // "Unknown"' "$results_file" 2>/dev/null)"
+    meta_out="$(jq -r '.scan_metadata.output_directory // empty' "$results_file" 2>/dev/null || true)"
+    [[ -z "$meta_out" ]] && meta_out="$output_dir"
     total_targets="$(jq -r '.summary.total_targets // 0' "$results_file" 2>/dev/null)"
     hosts_up="$(jq -r '.summary.total_hosts_up // 0' "$results_file" 2>/dev/null)"
     open_ports="$(jq -r '.summary.total_open_ports // 0' "$results_file" 2>/dev/null)"
@@ -1194,7 +1213,7 @@ reporting_export_html() {
     <div class="meta">
       Application: <strong>${app_name} v${app_version}</strong> |
       Generated: <strong>${scan_ts}</strong> |
-      Output Directory: <code>${output_dir}</code>
+      Output Directory: <code>${meta_out}</code>
     </div>
   </header>
 

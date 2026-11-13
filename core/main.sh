@@ -276,93 +276,124 @@ reckon_main() {
             printf '  %-20s: %s\n\n' "Output Directory" "$out_display"
         fi
 
+        # Create temporary execution workspace outside the final report structure.
+        local temp_work_dir=""
+        if declare -f fs_mktemp_dir >/dev/null 2>&1; then
+            fs_mktemp_dir temp_work_dir "reckon_exec"
+        else
+            temp_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/reckon_exec.XXXXXX" 2>/dev/null)"
+        fi
+        if [[ -z "$temp_work_dir" || ! -d "$temp_work_dir" ]]; then
+            printf 'Error: Failed to create temporary execution directory\n' >&2
+            exit 1
+        fi
+        chmod 0750 "$temp_work_dir" 2>/dev/null || true
+
+        # Clean up temporary execution files on exit, interrupt or failure.
+        _main_cleanup() {
+            if [[ -n "${temp_work_dir:-}" && -d "${temp_work_dir:-}" ]]; then
+                rm -rf "$temp_work_dir" 2>/dev/null || true
+            fi
+            if declare -f fs_cleanup_temp >/dev/null 2>&1; then
+                fs_cleanup_temp
+            fi
+        }
+        trap '_main_cleanup' EXIT INT TERM HUP
+
         local scan_start_time=$SECONDS
         local scan_status=0
-        if engine_run; then
+        if engine_run "${CLI_DRY_RUN:-false}" "$temp_work_dir" "${CONFIG_EFFECTIVE_TIMEOUT:-0}" "${CONFIG_EFFECTIVE_RETRIES:-0}"; then
             :
         else
             scan_status=$?
         fi
 
-        # Generate assessment reports unless in dry-run mode or --no-report is specified.
-        if [[ "${CLI_DRY_RUN:-false}" != true ]] && [[ -d "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" ]]; then
-            if [[ "${CONFIG_EFFECTIVE_NO_REPORT:-false}" == true ]]; then
-                if declare -f log_info >/dev/null 2>&1; then
-                    log_info "Report generation skipped (--no-report enabled)"
-                fi
-                if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
-                    _log_write_file "INFO" "Report generation skipped (--no-report enabled)"
-                fi
+        # In dry-run mode, clean up and exit immediately after displaying simulated plan.
+        if [[ "${CLI_DRY_RUN:-false}" == true ]]; then
+            _main_cleanup
+            trap - EXIT INT TERM HUP
+            exit "$scan_status"
+        fi
+
+        # Generate assessment reports unless --no-report is specified.
+        local -a displayed_report_files=()
+        local report_gen_failed=false
+
+        if [[ "${CONFIG_EFFECTIVE_NO_REPORT:-false}" == true ]]; then
+            if declare -f log_info >/dev/null 2>&1; then
+                log_info "Report generation skipped (--no-report enabled)"
+            fi
+            if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
+                _log_write_file "INFO" "Report generation skipped (--no-report enabled)"
+            fi
+            local t_val
+            for t_val in "${TARGET_VALUE[@]}"; do
+                local t_slug=""
+                t_slug="$(_engine_sanitize_target_dir "$t_val")"
+                local final_t_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug}"
+                rm -rf "$final_t_dir" && mkdir -p "$final_t_dir" && chmod 0750 "$final_t_dir"
+            done
+        else
+            local format_str=""
+            if declare -p CONFIG_EFFECTIVE_FORMATS >/dev/null 2>&1 && (( ${#CONFIG_EFFECTIVE_FORMATS[@]} > 0 )); then
+                local IFS=','
+                format_str="${CONFIG_EFFECTIVE_FORMATS[*]}"
             else
-                local format_str=""
-                if declare -p CONFIG_EFFECTIVE_FORMATS >/dev/null 2>&1 && (( ${#CONFIG_EFFECTIVE_FORMATS[@]} > 0 )); then
-                    local IFS=','
-                    format_str="${CONFIG_EFFECTIVE_FORMATS[*]}"
-                fi
+                format_str="JSON,MD,TXT"
+            fi
 
-                if reporting_generate "${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}" "$format_str"; then
-                    local gen_file
-                    for gen_file in "${REPORTING_GENERATED_FILES[@]}"; do
-                        if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
-                            _log_write_file "INFO" "Generated assessment report: $gen_file"
-                        fi
-                    done
-                else
-                    if declare -f log_warn >/dev/null 2>&1; then
-                        log_warn "Failed to generate assessment reports: ${REPORTING_ERROR:-unknown error}"
-                    fi
-                fi
+            local t_idx
+            for t_idx in "${!TARGET_VALUE[@]}"; do
+                local t_val="${TARGET_VALUE[t_idx]}"
+                local t_slug=""
+                t_slug="$(_engine_sanitize_target_dir "$t_val")"
+                local raw_t_dir="${temp_work_dir}/${t_slug}"
+                local final_t_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug}"
 
-                # Synchronize and move generated reports into target directories
-                local -a displayed_report_files=()
-                local t_val
-                for t_val in "${TARGET_VALUE[@]}"; do
-                    local t_slug
-                    t_slug="$(_engine_sanitize_target_dir "$t_val")"
-                    local t_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug}"
-                    if [[ -d "$t_dir" ]]; then
-                        local r_gen
-                        for r_gen in "${REPORTING_GENERATED_FILES[@]}"; do
-                            local r_base
-                            r_base="$(basename "$r_gen")"
-                            local dst_r="${t_dir}/${r_base}"
-                            if [[ -f "$r_gen" ]]; then
-                                cp -f "$r_gen" "$dst_r"
-                                chmod 0640 "$dst_r" 2>/dev/null || true
+                # Clean prior run folder for target to prevent mixing old and new scan reports
+                rm -rf "$final_t_dir" && mkdir -p "$final_t_dir" && chmod 0750 "$final_t_dir"
+
+                if [[ -d "$raw_t_dir" ]]; then
+                    local stage_dir="${temp_work_dir}/_stage_${t_slug}"
+                    rm -rf "$stage_dir" && mkdir -p "$stage_dir" && chmod 0750 "$stage_dir"
+                    ln -s "$raw_t_dir" "${stage_dir}/${t_slug}"
+
+                    local -a _saved_tv=("${TARGET_VALUE[@]}")
+                    local -a _saved_tt=("${TARGET_TYPE[@]}")
+                    TARGET_VALUE=("$t_val")
+                    TARGET_TYPE=("${_saved_tt[t_idx]:-}")
+
+                    if reporting_generate "$stage_dir" "$format_str"; then
+                        local gen_f
+                        for gen_f in "${REPORTING_GENERATED_FILES[@]}"; do
+                            local f_name
+                            f_name="$(basename "$gen_f")"
+                            if [[ -f "$gen_f" ]]; then
+                                mv -f "$gen_f" "${final_t_dir}/${f_name}"
+                                chmod 0640 "${final_t_dir}/${f_name}" 2>/dev/null || true
+                                displayed_report_files+=("${final_t_dir}/${f_name}")
+                                if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
+                                    _log_write_file "INFO" "Generated assessment report: ${final_t_dir}/${f_name}"
+                                fi
                             fi
                         done
-                    fi
-                done
-
-                # When a single target is assessed, remove reports from top-level output directory
-                # so they reside exclusively inside the target directory.
-                if (( ${#TARGET_VALUE[@]} == 1 )); then
-                    local r_gen
-                    for r_gen in "${REPORTING_GENERATED_FILES[@]}"; do
-                        if [[ -f "$r_gen" ]]; then
-                            rm -f "$r_gen"
+                    else
+                        report_gen_failed=true
+                        local rep_err="${REPORTING_ERROR:-unknown error}"
+                        if declare -f log_error >/dev/null 2>&1; then
+                            log_error "Failed to generate assessment reports for $t_val: $rep_err"
                         fi
-                    done
-                fi
-
-                # Present target directory report paths
-                if (( ${#TARGET_VALUE[@]} > 0 )); then
-                    local target_display_slug="$(_engine_sanitize_target_dir "${TARGET_VALUE[0]}")"
-                    local target_display_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${target_display_slug}"
-                    if [[ -d "$target_display_dir" ]]; then
-                        local r_gen
-                        for r_gen in "${REPORTING_GENERATED_FILES[@]}"; do
-                            local r_base
-                            r_base="$(basename "$r_gen")"
-                            if [[ -f "${target_display_dir}/${r_base}" ]]; then
-                                displayed_report_files+=("${target_display_dir}/${r_base}")
-                            fi
-                        done
+                        printf 'Error: Failed to generate assessment reports for %s: %s\n' "$t_val" "$rep_err" >&2
                     fi
+
+                    TARGET_VALUE=("${_saved_tv[@]}")
+                    TARGET_TYPE=("${_saved_tt[@]}")
+                    rm -rf "$stage_dir" 2>/dev/null || true
                 fi
-                if (( ${#displayed_report_files[@]} == 0 )); then
-                    displayed_report_files=("${REPORTING_GENERATED_FILES[@]}")
-                fi
+            done
+
+            if [[ "$report_gen_failed" == true ]]; then
+                scan_status=1
             fi
         fi
 
@@ -377,14 +408,14 @@ reckon_main() {
 
             local hosts_disc=0
             local open_ports=0
-            local urls_disc=0
             local svcs_disc=0
             local web_svcs=0
 
             local t_item
             for t_item in "${TARGET_VALUE[@]}"; do
-                local t_slug_scan="$(_engine_sanitize_target_dir "$t_item")"
-                local t_dir_scan="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug_scan}"
+                local t_slug_scan=""
+                t_slug_scan="$(_engine_sanitize_target_dir "$t_item")"
+                local t_dir_scan="${temp_work_dir}/${t_slug_scan}"
                 if [[ -d "$t_dir_scan" ]]; then
                     local h_c=0 o_c=0 s_c=0 w_c=0
                     if [[ -f "$t_dir_scan/host/hosts_live.txt" ]]; then
@@ -419,19 +450,24 @@ reckon_main() {
                 hosts_disc="${#TARGET_VALUE[@]}"
             fi
 
-            # Synchronize metrics from generated results.json inside target directory if available
-            local target_sub_dir="$(_engine_sanitize_target_dir "${TARGET_VALUE[0]:-}")"
-            local check_json="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${target_sub_dir}/results.json"
-            [[ ! -f "$check_json" ]] && check_json="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/results.json"
-            if [[ -f "$check_json" ]]; then
-                local json_hosts json_ports json_urls
-                json_hosts="$(jq -r '.summary.total_hosts_up // empty' "$check_json" 2>/dev/null || true)"
-                json_ports="$(jq -r '.summary.total_open_ports // empty' "$check_json" 2>/dev/null || true)"
-                json_urls="$(jq -r '.summary.total_web_endpoints // empty' "$check_json" 2>/dev/null || true)"
-                [[ -n "$json_hosts" && "$json_hosts" =~ ^[0-9]+$ ]] && (( json_hosts > hosts_disc )) && hosts_disc="$json_hosts"
-                [[ -n "$json_ports" && "$json_ports" =~ ^[0-9]+$ ]] && (( json_ports > open_ports )) && open_ports="$json_ports"
-                [[ -n "$json_urls" && "$json_urls" =~ ^[0-9]+$ ]] && urls_disc="$json_urls"
-            fi
+            # Synchronize metrics from generated results.json inside target directories if available
+            local t_item_sync
+            for t_item_sync in "${TARGET_VALUE[@]}"; do
+                local t_sub_dir=""
+                t_sub_dir="$(_engine_sanitize_target_dir "$t_item_sync")"
+                local check_json="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_sub_dir}/results.json"
+                if [[ -f "$check_json" ]]; then
+                    local json_hosts json_ports
+                    json_hosts="$(jq -r '.summary.total_hosts_up // empty' "$check_json" 2>/dev/null || true)"
+                    json_ports="$(jq -r '.summary.total_open_ports // empty' "$check_json" 2>/dev/null || true)"
+                    [[ -n "$json_hosts" && "$json_hosts" =~ ^[0-9]+$ ]] && (( json_hosts > hosts_disc )) && hosts_disc="$json_hosts"
+                    [[ -n "$json_ports" && "$json_ports" =~ ^[0-9]+$ ]] && (( json_ports > open_ports )) && open_ports="$json_ports"
+                fi
+            done
+
+            # Clean up temporary execution files before printing summary
+            _main_cleanup
+            trap - EXIT INT TERM HUP
 
             local modules_skipped=$(( ENGINE_TOTAL_TASKS - ENGINE_COMPLETED_TASKS - ENGINE_FAILED_TASKS - ENGINE_TIMEOUT_TASKS ))
             (( modules_skipped < 0 )) && modules_skipped=0
@@ -458,7 +494,7 @@ reckon_main() {
             printf '%s\n' "================================================================================"
 
             # Output Files block
-            local -a reports_to_display=("${displayed_report_files[@]:-${REPORTING_GENERATED_FILES[@]}}")
+            local -a reports_to_display=("${displayed_report_files[@]}")
             if (( ${#reports_to_display[@]} > 0 )); then
                 if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
                     printf '  %s\n' "$(term_bold "OUTPUT FILES")"
@@ -479,21 +515,22 @@ reckon_main() {
                 done
 
                 printf '\n'
-                if (( scan_status == 0 )); then
-                    if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                        printf '  %s\n' "$(term_green "RECONNAISSANCE COMPLETED")"
-                    else
-                        printf '  RECONNAISSANCE COMPLETED\n'
-                    fi
-                else
-                    if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                        printf '  %s\n' "$(term_yellow "RECONNAISSANCE COMPLETED WITH WARNINGS")"
-                    else
-                        printf '  RECONNAISSANCE COMPLETED WITH WARNINGS\n'
-                    fi
-                fi
-                printf '%s\n' "================================================================================"
             fi
+
+            if (( scan_status == 0 )); then
+                if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    printf '  %s\n' "$(term_green "RECONNAISSANCE COMPLETED")"
+                else
+                    printf '  RECONNAISSANCE COMPLETED\n'
+                fi
+            else
+                if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    printf '  %s\n' "$(term_yellow "RECONNAISSANCE COMPLETED WITH WARNINGS")"
+                else
+                    printf '  RECONNAISSANCE COMPLETED WITH WARNINGS\n'
+                fi
+            fi
+            printf '%s\n' "================================================================================"
         fi
 
         if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then

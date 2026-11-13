@@ -994,13 +994,36 @@ results_generate_json() {
             t_type="ipv4"
         fi
 
+        # Preserve original target string and target type from TARGET_VALUE / TARGET_TYPE metadata
+        local orig_target="$t_name"
+        if declare -p TARGET_VALUE >/dev/null 2>&1 && (( ${#TARGET_VALUE[@]} > 0 )); then
+            local t_idx
+            for t_idx in "${!TARGET_VALUE[@]}"; do
+                local s_slug=""
+                if declare -f _engine_sanitize_target_dir >/dev/null 2>&1; then
+                    s_slug="$(_engine_sanitize_target_dir "${TARGET_VALUE[t_idx]}")"
+                else
+                    s_slug="${TARGET_VALUE[t_idx]#*://}"
+                    s_slug="${s_slug//\//_}"
+                    s_slug="${s_slug//:/_}"
+                fi
+                if [[ "$s_slug" == "$t_name" ]]; then
+                    orig_target="${TARGET_VALUE[t_idx]}"
+                    if declare -p TARGET_TYPE >/dev/null 2>&1 && [[ -n "${TARGET_TYPE[t_idx]:-}" ]]; then
+                        t_type="${TARGET_TYPE[t_idx]}"
+                    fi
+                    break
+                fi
+            done
+        fi
+
         local t_json
-        t_json="$(results_collect_target "$t_name" "$t_type" "$t_dir")"
+        t_json="$(results_collect_target "$orig_target" "$t_type" "$t_dir")"
         if [[ -n "$t_json" && "$t_json" != "{}" ]]; then
             target_objs+=("$t_json")
             _results_accumulate_target_metrics "$t_dir"
         fi
-    done < <(find "$output_dir" -mindepth 1 -maxdepth 1 -type d | sort)
+    done < <(find -L "$output_dir" -mindepth 1 -maxdepth 1 -type d | sort)
 
     RESULTS_TOTAL_TARGETS="${#target_objs[@]}"
 
@@ -1018,6 +1041,11 @@ results_generate_json() {
     local timestamp
     timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
 
+    local meta_out_dir="$output_dir"
+    if [[ -v CONFIG_EFFECTIVE_OUTPUT_DIR && -n "$CONFIG_EFFECTIVE_OUTPUT_DIR" ]]; then
+        meta_out_dir="$CONFIG_EFFECTIVE_OUTPUT_DIR"
+    fi
+
     local raw_json_tmp="${out_json}.tmp"
     cat <<EOF > "$raw_json_tmp"
 {
@@ -1026,7 +1054,7 @@ results_generate_json() {
     "app_name": "RECKON",
     "app_version": "${APP_VERSION:-1.0.0}",
     "timestamp": "$timestamp",
-    "output_directory": "$output_dir",
+    "output_directory": "$meta_out_dir",
     "targets_count": $RESULTS_TOTAL_TARGETS
   },
   "summary": {
