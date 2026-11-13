@@ -273,9 +273,9 @@ fi
 # Test 16: DNS reconnaissance target compatibility
 if engine_is_module_compatible "dns" "domain" && \
    engine_is_module_compatible "dns" "hostname" && \
-   ! engine_is_module_compatible "dns" "ipv4" && \
+   engine_is_module_compatible "dns" "ipv4" && \
    ! engine_is_module_compatible "dns" "url_http"; then
-    pass "DNS reconnaissance requires domain/hostname and rejects raw IPv4/URLs"
+    pass "DNS reconnaissance accepts domain, hostname, and IPv4 targets"
 else
     fail "DNS reconnaissance compatibility rules failed"
 fi
@@ -476,9 +476,9 @@ engine_init
 engine_resolve_modules "true" "false" "" ""
 
 if engine_plan_scan; then
-    # In network mode, 'dns' is incompatible with raw ipv4, while other 10 network modules are compatible
-    if (( ENGINE_TOTAL_TASKS == 10 )) && (( ENGINE_SKIPPED_TASKS == 1 )); then
-        pass "engine_plan_scan schedules compatible modules for IPv4 target and skips 'dns'"
+    # In network mode, all 11 network modules are compatible with IPv4 targets (including dns for reverse PTR)
+    if (( ENGINE_TOTAL_TASKS == 11 )) && (( ENGINE_SKIPPED_TASKS == 0 )); then
+        pass "engine_plan_scan schedules compatible modules for IPv4 target including 'dns'"
     else
         fail "engine_plan_scan IPv4 task count mismatch: total=$ENGINE_TOTAL_TASKS, skipped=$ENGINE_SKIPPED_TASKS"
     fi
@@ -541,11 +541,11 @@ fi
 TARGET_VALUE=("192.0.2.1" "example.com")
 TARGET_TYPE=("ipv4" "domain")
 engine_init
-engine_resolve_modules "false" "false" "host,dns" ""
+engine_resolve_modules "false" "false" "host,subdomain" ""
 
 if engine_plan_scan; then
-    # Target 1 (ipv4): host compatible (1), dns skipped (1)
-    # Target 2 (domain): host compatible (1), dns compatible (1)
+    # Target 1 (ipv4): host compatible (1), subdomain skipped (1)
+    # Target 2 (domain): host compatible (1), subdomain compatible (1)
     # Total tasks: 3, Total skipped: 1
     if (( ENGINE_TOTAL_TASKS == 3 )) && (( ENGINE_SKIPPED_TASKS == 1 )); then
         pass "engine_plan_scan schedules execution graph across multiple mixed targets"

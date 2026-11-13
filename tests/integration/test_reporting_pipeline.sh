@@ -309,7 +309,7 @@ printf '\n%s\n' "Stage 7: Simulation Safety in Dry-Run Mode (--dry-run)"
 DRY_RUN_OUT="$TEST_ROOT/dry_run_reports"
 dry_run_res="$("$RECKON_BIN" --module host --target "dryrun.corp" --output "$DRY_RUN_OUT" --dry-run 2>&1 || true)"
 
-if [[ "$dry_run_res" == *"[DRY-RUN] Execution plan simulated"* ]]; then
+if [[ "$dry_run_res" == *"RECKON - EXECUTION PLAN"* ]]; then
     pass "--dry-run prints simulated execution plan"
 else
     fail "--dry-run missing expected execution plan notice"

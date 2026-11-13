@@ -43,7 +43,7 @@ module_resources_run() {
 
     # Initialize web execution context with supported target types.
     local init_rc=0
-    web_mod_init "$target" "$t_type" "$task_dir" url_http url_https hostname domain || init_rc=$?
+    web_mod_init "$target" "$t_type" "$task_dir" url_http url_https hostname domain ipv4 || init_rc=$?
     if (( init_rc == 2 )); then
         return 0
     elif (( init_rc != 0 )); then

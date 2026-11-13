@@ -276,6 +276,15 @@ reckon_main() {
             printf '  %-20s: %s\n\n' "Output Directory" "$out_display"
         fi
 
+        # In dry-run mode, render the simulated execution plan and exit.
+        # Zero temporary workspace creation, zero reports, zero tool execution.
+        if [[ "${CLI_DRY_RUN:-false}" == true ]]; then
+            local dry_run_rc=0
+            engine_render_dry_run
+            dry_run_rc=$?
+            exit "$dry_run_rc"
+        fi
+
         # Create temporary execution workspace outside the final report structure.
         local temp_work_dir=""
         if declare -f fs_mktemp_dir >/dev/null 2>&1; then
@@ -306,13 +315,6 @@ reckon_main() {
             :
         else
             scan_status=$?
-        fi
-
-        # In dry-run mode, clean up and exit immediately after displaying simulated plan.
-        if [[ "${CLI_DRY_RUN:-false}" == true ]]; then
-            _main_cleanup
-            trap - EXIT INT TERM HUP
-            exit "$scan_status"
         fi
 
         # Generate assessment reports unless --no-report is specified.

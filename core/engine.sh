@@ -290,7 +290,7 @@ engine_get_module_target_types() {
             printf '%s\n' "ipv4" "ipv4_cidr" "ipv4_range" "hostname" "domain"
             ;;
         dns)
-            printf '%s\n' "hostname" "domain"
+            printf '%s\n' "hostname" "domain" "ipv4"
             ;;
         port|service|os)
             printf '%s\n' "ipv4" "hostname" "domain"
@@ -308,7 +308,7 @@ engine_get_module_target_types() {
             printf '%s\n' "domain"
             ;;
         crawl|endpoint|directory|file|vhost|resources)
-            printf '%s\n' "url_http" "url_https" "hostname" "domain"
+            printf '%s\n' "url_http" "url_https" "hostname" "domain" "ipv4"
             ;;
         technology|cms|waf|http-analysis)
             printf '%s\n' "url_http" "url_https" "hostname" "domain" "ipv4"
@@ -575,6 +575,528 @@ engine_format_plan() {
         printf '  [%2d] Target: %-25s (%-10s) -> Module: %-15s (%s) [%s]\n' \
             "$(( i + 1 ))" "$target" "$target_type" "$mod" "$mod_name" "$category"
     done
+}
+
+# Determine if a module execution is conditional on upstream discovery findings.
+#
+# Arguments:
+#   $1 - module identifier
+#   $2 - target type string
+#
+# Returns:
+#   0 if module execution is conditional, 1 otherwise
+engine_is_module_conditional() {
+    local mod="${1:-}"
+    local t_type="${2:-}"
+
+    case "$mod" in
+        crawl|directory|file|vhost|endpoint|resources)
+            # When target is not already an explicit full URL, execution is gated
+            # on http-probe discovering active web endpoints/services.
+            if [[ "$t_type" != "url_http" && "$t_type" != "url_https" ]]; then
+                return 0
+            fi
+            ;;
+    esac
+    return 1
+}
+
+# Return the dependency requirement description for a conditional module.
+#
+# Arguments:
+#   $1 - module identifier
+#
+# Outputs:
+#   Human-readable condition requirement description
+engine_get_module_condition() {
+    local mod="${1:-}"
+
+    case "$mod" in
+        vhost)
+            printf '%s\n' "Live HTTP service from http-probe"
+            ;;
+        crawl|directory|file|endpoint|resources)
+            printf '%s\n' "Live HTTP endpoint from http-probe"
+            ;;
+        *)
+            printf '%s\n' "Upstream reconnaissance findings"
+            ;;
+    esac
+}
+
+# Render the consolidated execution plan for dry-run simulation mode.
+#
+# Inspects target metadata, effective module resolutions, tool dependency
+# availability, and fallback heuristics without executing scans or touching disk.
+#
+# Returns:
+#   0 on READY or READY WITH WARNINGS
+#   1 on BLOCKED (required tool missing)
+#   2 on INVALID (planning/validation error)
+engine_render_dry_run() {
+    local i
+    local num_targets=0
+    local target_display=""
+    local target_type_str="Unknown"
+    local mode_label="Network"
+    local profile_str="Default"
+    local target_val=""
+    local target_type_val=""
+
+    # Ensure lib/deps.sh is available for tool inspection.
+    if ! declare -f deps_check_all >/dev/null 2>&1; then
+        local engine_lib_dir
+        engine_lib_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd -P)"
+        if [[ -f "$engine_lib_dir/deps.sh" ]]; then
+            # shellcheck disable=SC1091
+            source "$engine_lib_dir/deps.sh"
+        fi
+    fi
+
+    # Read targets and target types.
+    if declare -p TARGET_VALUE >/dev/null 2>&1; then
+        num_targets=${#TARGET_VALUE[@]}
+    fi
+
+    if (( num_targets == 0 )); then
+        printf 'Error: No valid targets available for execution planning.\n' >&2
+        return 2
+    fi
+
+    target_val="${TARGET_VALUE[0]}"
+    target_display="$target_val"
+    if (( num_targets > 1 )); then
+        target_display="${target_val} (+ $(( num_targets - 1 )) more)"
+    fi
+
+    # Determine human-friendly target classification string.
+    if (( num_targets == 1 )); then
+        target_type_val="${TARGET_TYPE[0]:-unknown}"
+        case "$target_type_val" in
+            ipv4)                  target_type_str="IPv4 Address" ;;
+            ipv4_cidr)             target_type_str="IPv4 CIDR" ;;
+            ipv4_range)            target_type_str="IPv4 Range" ;;
+            domain)                target_type_str="Domain" ;;
+            hostname)              target_type_str="Hostname" ;;
+            url|url_http|url_https) target_type_str="URL" ;;
+            *)                     target_type_str="$target_type_val" ;;
+        esac
+    else
+        local first_type="${TARGET_TYPE[0]:-unknown}"
+        local all_types_same=true
+        local t_type_item
+        for t_type_item in "${TARGET_TYPE[@]}"; do
+            if [[ "$t_type_item" != "$first_type" ]]; then
+                all_types_same=false
+                break
+            fi
+        done
+        if [[ "$all_types_same" == true ]]; then
+            case "$first_type" in
+                ipv4)                  target_type_str="IPv4 Address" ;;
+                ipv4_cidr)             target_type_str="IPv4 CIDR" ;;
+                ipv4_range)            target_type_str="IPv4 Range" ;;
+                domain)                target_type_str="Domain" ;;
+                hostname)              target_type_str="Hostname" ;;
+                url|url_http|url_https) target_type_str="URL" ;;
+                *)                     target_type_str="$first_type" ;;
+            esac
+        else
+            target_type_str="Mixed"
+        fi
+    fi
+
+    # Determine Scan Mode string.
+    if [[ "${CLI_NETWORK:-false}" == true && "${CLI_WEB:-false}" == true ]]; then
+        if [[ "${CLI_MODE:-}" == "all" || "${CONFIG_EFFECTIVE_MODE:-}" == "all" ]]; then
+            mode_label="All"
+        else
+            mode_label="Network + Web"
+        fi
+    elif [[ "${CLI_WEB:-false}" == true || "${CONFIG_EFFECTIVE_WEB:-false}" == true ]]; then
+        mode_label="Web"
+    elif [[ "${CLI_NETWORK:-false}" == true || "${CONFIG_EFFECTIVE_NETWORK:-false}" == true ]]; then
+        mode_label="Network"
+    elif [[ -n "${CONFIG_EFFECTIVE_MODE:-}" ]]; then
+        mode_label="${CONFIG_EFFECTIVE_MODE^}"
+    elif [[ -n "${CLI_MODE:-}" ]]; then
+        mode_label="${CLI_MODE^}"
+    fi
+
+    # Determine Scan Profile string.
+    profile_str="${CONFIG_EFFECTIVE_PROFILE:-${CLI_PROFILE:-Default}}"
+    [[ -z "$profile_str" ]] && profile_str="Default"
+    profile_str="${profile_str^}"
+
+    # Perform comprehensive tool dependency evaluation across the inventory.
+    if declare -f deps_init >/dev/null 2>&1 && declare -f deps_check_all >/dev/null 2>&1; then
+        deps_init
+        deps_check_all || true
+    fi
+
+    local req_missing=0
+    local rec_missing=0
+    local opt_missing=0
+    local dep_tool
+    local dep_tier
+
+    for dep_tool in "${DEPS_MISSING_TOOLS[@]}"; do
+        dep_tier="$(deps_get_tool_tier "$dep_tool")"
+        case "$dep_tier" in
+            required)    (( req_missing += 1 )) ;;
+            recommended) (( rec_missing += 1 )) ;;
+            optional)   (( opt_missing += 1 )) ;;
+        esac
+    done
+
+    # Ensure candidate modules are resolved.
+    if (( ${#ENGINE_RESOLVED_MODULES[@]} == 0 )); then
+        if ! engine_resolve_modules; then
+            printf 'Error: %s\n' "$ENGINE_ERROR" >&2
+            return 2
+        fi
+    fi
+
+    local -a planned_modules=()
+    local -a planned_statuses=()
+    local -a planned_conditions=()
+    local -a planned_net_modules=()
+    local -a planned_web_modules=()
+    local -a blocked_modules=()
+    local -a not_app_modules=()
+    local -a unexec_modules=()
+    local -a unexec_statuses=()
+    local -a unexec_reasons=()
+
+    local mod
+    local mod_category
+    local mod_name
+    for mod in "${ENGINE_RESOLVED_MODULES[@]}"; do
+        # 1. Compatibility check against target types
+        local is_compat=false
+        local t_idx
+        for (( t_idx = 0; t_idx < num_targets; t_idx++ )); do
+            if engine_is_module_compatible "$mod" "${TARGET_TYPE[t_idx]}"; then
+                is_compat=true
+                break
+            fi
+        done
+
+        if [[ "$is_compat" == false ]]; then
+            local incomp_reason="Incompatible with target type ($target_type_str)"
+            if [[ "$mod" == "subdomain" ]]; then
+                incomp_reason="Requires domain name target"
+            elif [[ "$mod" == "historical-urls" ]]; then
+                incomp_reason="Requires domain or hostname target"
+            fi
+            not_app_modules+=("$mod")
+            unexec_modules+=("$mod")
+            unexec_statuses+=("NOT APPLICABLE")
+            unexec_reasons+=("$incomp_reason")
+            continue
+        fi
+
+        # 2. Dependency evaluation for compatible modules
+        local -a m_tools=()
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ -n "$line" ]] && m_tools+=("$line")
+        done < <(deps_get_module_tools "$mod" 2>/dev/null || true)
+
+        local has_missing_req=false
+        local has_missing_rec=false
+        local missing_req_tool=""
+        local t
+        for t in "${m_tools[@]}"; do
+            local t_tier
+            t_tier="$(deps_get_tool_tier "$t")"
+            local t_avail=false
+            local a
+            for a in "${DEPS_AVAILABLE_TOOLS[@]}"; do
+                if [[ "$a" == "$t" ]]; then
+                    t_avail=true
+                    break
+                fi
+            done
+            if [[ "$t_avail" == false ]]; then
+                if [[ "$t_tier" == "required" ]]; then
+                    has_missing_req=true
+                    [[ -z "$missing_req_tool" ]] && missing_req_tool="$t"
+                elif [[ "$t_tier" == "recommended" ]]; then
+                    has_missing_rec=true
+                fi
+            fi
+        done
+
+        if [[ "$has_missing_req" == true ]]; then
+            blocked_modules+=("$mod")
+            unexec_modules+=("$mod")
+            unexec_statuses+=("BLOCKED")
+            unexec_reasons+=("Missing required dependency ($missing_req_tool)")
+        else
+            # Check if execution is conditional on upstream findings
+            local is_cond=false
+            local cond_req=""
+            if engine_is_module_conditional "$mod" "${TARGET_TYPE[0]:-unknown}"; then
+                is_cond=true
+                cond_req="$(engine_get_module_condition "$mod")"
+            fi
+
+            planned_modules+=("$mod")
+            if [[ "$is_cond" == true ]]; then
+                planned_statuses+=("READY (CONDITIONAL)")
+                planned_conditions+=("$cond_req")
+            elif [[ "$has_missing_rec" == true ]]; then
+                planned_statuses+=("READY (FALLBACK)")
+                planned_conditions+=("")
+            else
+                planned_statuses+=("READY")
+                planned_conditions+=("")
+            fi
+
+            mod_category="$(engine_get_module_category "$mod")"
+            if [[ "$mod_category" == "network" ]]; then
+                planned_net_modules+=("$mod")
+            else
+                planned_web_modules+=("$mod")
+            fi
+        fi
+    done
+
+    # Collect any modules that were excluded via configuration.
+    local -a excluded_candidates=()
+    local excluded_count=0
+    if declare -p CONFIG_EFFECTIVE_EXCLUDE_MODULES >/dev/null 2>&1; then
+        excluded_candidates=("${CONFIG_EFFECTIVE_EXCLUDE_MODULES[@]}")
+    elif declare -p CLI_EXCLUDE_MODULES >/dev/null 2>&1; then
+        excluded_candidates=("${CLI_EXCLUDE_MODULES[@]}")
+    fi
+    for mod in "${excluded_candidates[@]}"; do
+        [[ -z "$mod" ]] && continue
+        unexec_modules+=("$mod")
+        unexec_statuses+=("EXCLUDED")
+        unexec_reasons+=("Excluded by user configuration (--exclude)")
+        (( excluded_count += 1 ))
+    done
+
+    local planned_count=${#planned_modules[@]}
+    local net_planned_count=${#planned_net_modules[@]}
+    local web_planned_count=${#planned_web_modules[@]}
+    local blocked_count=${#blocked_modules[@]}
+    local not_app_count=${#not_app_modules[@]}
+    local cond_planned_count=0
+
+    for st_item in "${planned_statuses[@]}"; do
+        if [[ "$st_item" == "READY (CONDITIONAL)" ]]; then
+            (( cond_planned_count += 1 ))
+        fi
+    done
+
+    # Determine final simulation status and exit code.
+    local overall_status="READY"
+    local overall_rc=0
+    if (( blocked_count > 0 )); then
+        overall_status="BLOCKED"
+        overall_rc=1
+    elif (( planned_count == 0 )); then
+        overall_status="INVALID"
+        overall_rc=2
+    else
+        local has_fallbacks=false
+        local st_item
+        for st_item in "${planned_statuses[@]}"; do
+            if [[ "$st_item" == "READY (FALLBACK)" ]]; then
+                has_fallbacks=true
+                break
+            fi
+        done
+        if [[ "$has_fallbacks" == true ]]; then
+            overall_status="READY WITH WARNINGS"
+            overall_rc=0
+        else
+            overall_status="READY"
+            overall_rc=0
+        fi
+    fi
+
+    # Render Header Card
+    printf '%s\n' "================================================================================"
+    if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+        printf '                         %s\n' "$(term_bold "RECKON - EXECUTION PLAN")"
+    else
+        printf '                         RECKON - EXECUTION PLAN\n'
+    fi
+    printf '%s\n\n' "================================================================================"
+
+    # Render Target Information Block
+    printf 'TARGET INFORMATION\n\n'
+    printf '  %-22s: %s\n' "Target" "$target_display"
+    printf '  %-22s: %s\n' "Target Type" "$target_type_str"
+    printf '  %-22s: %s\n' "Scan Mode" "$mode_label"
+    printf '  %-22s: %s\n' "Scan Profile" "$profile_str"
+    printf '  %-22s: %s\n\n' "Total Targets" "$num_targets"
+
+    # Render Module Execution Plan
+    printf '%s\n' "--------------------------------------------------------------------------------"
+    printf 'MODULE EXECUTION PLAN\n'
+    printf '%s\n\n' "--------------------------------------------------------------------------------"
+
+    if (( net_planned_count > 0 )); then
+        printf '  NETWORK RECONNAISSANCE\n\n'
+        printf '  NO.    %-19sDESCRIPTION\n' "MODULE"
+        local net_idx=1
+        for mod in "${planned_net_modules[@]}"; do
+            mod_name="$(engine_get_module_name "$mod")"
+            if engine_is_module_conditional "$mod" "${TARGET_TYPE[0]:-unknown}"; then
+                mod_name="${mod_name} (Conditional)"
+            fi
+            printf '  [%02d]   %-19s%s\n' "$net_idx" "$mod" "$mod_name"
+            (( net_idx += 1 ))
+        done
+        printf '\n  Total Network Modules: %d\n' "$net_planned_count"
+    fi
+
+    if (( web_planned_count > 0 )); then
+        if (( net_planned_count > 0 )); then
+            printf '\n'
+        fi
+        printf '  WEB RECONNAISSANCE\n\n'
+        printf '  NO.    %-19sDESCRIPTION\n' "MODULE"
+        local web_idx=1
+        for mod in "${planned_web_modules[@]}"; do
+            mod_name="$(engine_get_module_name "$mod")"
+            if engine_is_module_conditional "$mod" "${TARGET_TYPE[0]:-unknown}"; then
+                mod_name="${mod_name} (Conditional)"
+            fi
+            printf '  [%02d]   %-19s%s\n' "$web_idx" "$mod" "$mod_name"
+            (( web_idx += 1 ))
+        done
+        printf '\n  Total Web Modules: %d\n' "$web_planned_count"
+    fi
+
+    if (( ${#unexec_modules[@]} > 0 )); then
+        if (( net_planned_count > 0 || web_planned_count > 0 )); then
+            printf '\n'
+        fi
+        printf '  INCOMPATIBLE / EXCLUDED MODULES\n\n'
+        printf '  NO.    %-19s%-19sREASON\n' "MODULE" "STATUS"
+        local unexec_idx=1
+        for (( i = 0; i < ${#unexec_modules[@]}; i++ )); do
+            printf '  [%02d]   %-19s%-19s%s\n' "$unexec_idx" "${unexec_modules[i]}" "${unexec_statuses[i]}" "${unexec_reasons[i]}"
+            (( unexec_idx += 1 ))
+        done
+        printf '\n  Total Incompatible/Excluded: %d\n' "${#unexec_modules[@]}"
+    fi
+
+    # Render Dependency Readiness Block
+    printf '\n%s\n' "--------------------------------------------------------------------------------"
+    printf 'DEPENDENCY READINESS\n'
+    printf '%s\n\n' "--------------------------------------------------------------------------------"
+
+    printf '  %-36s: %d\n' "Required Dependencies Missing" "$req_missing"
+    printf '  %-36s: %d\n' "Recommended Dependencies Missing" "$rec_missing"
+    printf '  %-36s: %d\n\n' "Optional Dependencies Missing" "$opt_missing"
+
+    printf '  Module Readiness:\n'
+    for (( i = 0; i < planned_count; i++ )); do
+        mod="${planned_modules[i]}"
+        local st="${planned_statuses[i]}"
+        local cond_req="${planned_conditions[i]}"
+        local badge="[$st]"
+        local pad=10
+        if [[ "$st" == "READY" ]]; then
+            pad=15
+            if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                badge="$(term_green "[$st]")"
+            fi
+        elif [[ "$st" == "READY (FALLBACK)" ]]; then
+            pad=4
+            if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                badge="$(term_yellow "[$st]")"
+            fi
+        elif [[ "$st" == "READY (CONDITIONAL)" ]]; then
+            pad=1
+            if declare -f term_cyan >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                badge="$(term_cyan "[$st]")"
+            fi
+        elif [[ "$st" == "BLOCKED" ]]; then
+            pad=13
+            if declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                badge="$(term_red "[$st]")"
+            fi
+        fi
+        printf '    %s%*s%s\n' "$badge" "$pad" "" "$mod"
+        if [[ -n "$cond_req" ]]; then
+            printf '      Requires: %s\n' "$cond_req"
+        fi
+    done
+    for mod in "${blocked_modules[@]}"; do
+        local badge="[BLOCKED]"
+        if declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+            badge="$(term_red "[BLOCKED]")"
+        fi
+        printf '    %s%*s%s\n' "$badge" 13 "" "$mod"
+    done
+
+    # Render Execution Summary Block
+    printf '\n%s\n' "--------------------------------------------------------------------------------"
+    printf 'EXECUTION SUMMARY\n'
+    printf '%s\n\n' "--------------------------------------------------------------------------------"
+
+    printf '  %-30s: %d\n' "Total Targets" "$num_targets"
+    printf '  %-30s: %d\n' "Planned Modules" "$planned_count"
+    printf '  %-30s: %d\n' "Network Modules" "$net_planned_count"
+    printf '  %-30s: %d\n' "Web Modules" "$web_planned_count"
+    printf '  %-30s: %d\n' "Conditional Modules" "$cond_planned_count"
+    printf '  %-30s: %d\n' "Blocked Modules" "$blocked_count"
+    printf '  %-30s: %d\n' "Not Applicable Modules" "$not_app_count"
+    if (( excluded_count > 0 )); then
+        printf '  %-30s: %d\n' "Excluded Modules" "$excluded_count"
+    fi
+
+    # Render Execution Safety Block
+    printf '\n%s\n' "--------------------------------------------------------------------------------"
+    printf 'EXECUTION SAFETY\n'
+    printf '%s\n\n' "--------------------------------------------------------------------------------"
+
+    printf '  %-30s: %s\n' "Reconnaissance Executed" "No"
+    printf '  %-30s: %s\n' "External Tools Executed" "No"
+    printf '  %-30s: %s\n' "Network Requests Sent" "No"
+    printf '  %-30s: %s\n' "Files Created" "No"
+    printf '  %-30s: %s\n' "Directories Created" "No"
+    printf '  %-30s: %s\n' "Reports Generated" "No"
+
+    # Render Final Status Card
+    printf '\n%s\n' "================================================================================"
+    local status_line="  STATUS: $overall_status"
+    if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+        if [[ "$overall_status" == "READY" ]]; then
+            status_line="  STATUS: $(term_green "$(term_bold "$overall_status")")"
+        elif [[ "$overall_status" == "READY WITH WARNINGS" ]]; then
+            status_line="  STATUS: $(term_yellow "$(term_bold "$overall_status")")"
+        else
+            status_line="  STATUS: $(term_red "$(term_bold "$overall_status")")"
+        fi
+    fi
+    printf '%s\n\n' "$status_line"
+
+    if [[ "$overall_status" == "READY" ]]; then
+        printf '  Execution plan generated successfully.\n'
+        printf '  This was a simulation. No reconnaissance was performed.\n'
+    elif [[ "$overall_status" == "READY WITH WARNINGS" ]]; then
+        printf '  Execution plan generated successfully.\n'
+        printf '  Some recommended or optional dependencies are missing.\n'
+        printf '  This was a simulation. No reconnaissance was performed.\n'
+    elif [[ "$overall_status" == "BLOCKED" ]]; then
+        printf '  Missing required dependencies prevent execution of planned modules.\n'
+        printf '  Install the missing required tools before starting the scan.\n'
+        printf '  This was a simulation. No reconnaissance was performed.\n'
+    else
+        printf '  Execution plan validation failed.\n'
+        printf '  This was a simulation. No reconnaissance was performed.\n'
+    fi
+    printf '%s\n' "================================================================================"
+
+    return "$overall_rc"
 }
 
 # Convert a target value into a safe filesystem directory name.
@@ -883,7 +1405,9 @@ engine_run() {
                 log_info "Executing [$(( i + 1 ))/$ENGINE_TOTAL_TASKS] $mod ($mod_name) on target '$target'..."
             fi
         else
-            _log_write_file "INFO" "Executing [$(( i + 1 ))/$ENGINE_TOTAL_TASKS] $mod ($mod_name) on target '$target'..."
+            if declare -f _log_write_file >/dev/null 2>&1; then
+                _log_write_file "INFO" "Executing [$(( i + 1 ))/$ENGINE_TOTAL_TASKS] $mod ($mod_name) on target '$target'..."
+            fi
         fi
 
         start_time=$SECONDS

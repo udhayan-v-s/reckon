@@ -515,7 +515,7 @@ assert_failure \
 DRY_RUN_OUT="$TEST_ROOT/dry_run_results"
 assert_success_output \
     "CLI --dry-run outputs execution plan" \
-    "[DRY-RUN] Execution plan simulated" \
+    "RECKON - EXECUTION PLAN" \
     "Error:" \
     "$PROJECT_ROOT/reckon" --network --target 192.0.2.10 --dry-run --output "$DRY_RUN_OUT"
 
@@ -553,7 +553,7 @@ assert_failure \
     "Reject incompatible target and module selection" \
     2 \
     "No compatible modules could be scheduled" \
-    "$PROJECT_ROOT/reckon" --module dns --target 192.0.2.10
+    "$PROJECT_ROOT/reckon" --module subdomain --target 192.0.2.10
 
 # Test 40: Detect missing results library component.
 MISSING_RESULTS="$TEST_ROOT/missing-results"

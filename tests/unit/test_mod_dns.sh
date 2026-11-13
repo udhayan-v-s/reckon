@@ -74,16 +74,29 @@ else
     fail "dns module accepted empty target"
 fi
 
-# Test 3: Rejects incompatible target type (e.g. ipv4)
+# Test 3: Rejects incompatible target type (e.g. ipv4_cidr)
 TASK_DIR_INCOMPAT="$TEST_ROOT/incompat_target"
-if ! "$DNS_MODULE" "192.168.1.1" "ipv4" "$TASK_DIR_INCOMPAT" >/dev/null 2>&1; then
+if ! "$DNS_MODULE" "192.168.1.0/24" "ipv4_cidr" "$TASK_DIR_INCOMPAT" >/dev/null 2>&1; then
     if [[ -f "$TASK_DIR_INCOMPAT/output.txt" ]] && grep -q "Incompatible target type" "$TASK_DIR_INCOMPAT/output.txt"; then
-        pass "dns module rejects raw IPv4 targets and records incompatible target failure"
+        pass "dns module rejects incompatible target types (e.g. ipv4_cidr) and records failure"
     else
         fail "dns module did not write expected failure notice in output.txt"
     fi
 else
-    fail "dns module succeeded when invoked against incompatible ipv4 target"
+    fail "dns module succeeded when invoked against incompatible ipv4_cidr target"
+fi
+
+# Test 3b: Accepts raw IPv4 target for reverse DNS lookup
+TASK_DIR_IPV4="$TEST_ROOT/ipv4_target"
+if "$DNS_MODULE" "93.184.216.34" "ipv4" "$TASK_DIR_IPV4" >/dev/null 2>&1; then
+    if [[ -f "$TASK_DIR_IPV4/dns_records.txt" && -f "$TASK_DIR_IPV4/output.txt" ]] && \
+       grep -q "Reverse DNS (PTR Lookup)" "$TASK_DIR_IPV4/output.txt"; then
+        pass "dns module accepts raw IPv4 target and performs reverse DNS lookup"
+    else
+        fail "dns module failed to generate reverse DNS output for IPv4 target"
+    fi
+else
+    fail "dns module failed when invoked against valid IPv4 target"
 fi
 
 # -----------------------------------------------------------------------------

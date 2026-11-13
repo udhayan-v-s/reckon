@@ -425,7 +425,7 @@ fi
 
 # Test 8B: Incompatible target and module combination rejected during planning
 stage8b_status=0
-STAGE8B_OUT="$("$RECKON_BIN" --module dns --target 192.0.2.1 2>&1)" || stage8b_status=$?
+STAGE8B_OUT="$("$RECKON_BIN" --module subdomain --target 192.0.2.1 2>&1)" || stage8b_status=$?
 
 if (( stage8b_status == 2 )); then
     pass "incompatible target and module selection rejected with exit code 2"

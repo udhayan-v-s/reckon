@@ -99,10 +99,10 @@ dns_main() {
 
     net_mod_write_header "dns" "DNS Reconnaissance"
 
-    # Validate target type compatibility (domain, hostname).
-    if ! net_mod_is_domain; then
+    # Validate target type compatibility (domain, hostname, ipv4).
+    if ! net_mod_is_domain && [[ "$NET_TARGET_TYPE" != "ipv4" ]]; then
         net_mod_write_section "Execution Notice"
-        net_mod_write_raw "Error: Target '$NET_TARGET' ($NET_TARGET_TYPE) is not a domain or hostname."
+        net_mod_write_raw "Error: Target '$NET_TARGET' ($NET_TARGET_TYPE) is not a domain, hostname, or IPv4 address."
         net_mod_write_footer "FAILED" "Incompatible target type for DNS reconnaissance."
         return 1
     fi
@@ -138,13 +138,33 @@ dns_main() {
     fi
 
     net_mod_write_section "Target Information"
-    net_mod_write_kv "Target Domain" "$NET_TARGET"
+    local target_lbl="Target Domain"
+    [[ "$NET_TARGET_TYPE" == "ipv4" ]] && target_lbl="Target IP"
+    net_mod_write_kv "$target_lbl" "$NET_TARGET"
     net_mod_write_kv "Target Type" "$NET_TARGET_TYPE"
     net_mod_write_kv "DNS Engines Used" "$engines_str"
 
     # Structured records artifact
     local records_file="${NET_TASK_DIR}/dns_records.txt"
     : > "$records_file"
+
+    # For IPv4 targets, perform dedicated reverse DNS (PTR) interrogation.
+    if [[ "$NET_TARGET_TYPE" == "ipv4" ]]; then
+        net_mod_write_section "Reverse DNS (PTR Lookup)"
+        local ptr
+        ptr="$(_dns_reverse_lookup "$NET_TARGET")"
+        if [[ -n "$ptr" ]]; then
+            net_mod_write_kv "PTR Record" "$ptr"
+            printf 'PTR\t%s\n' "$ptr" >> "$records_file"
+            net_mod_write_footer "COMPLETED" "Resolved reverse DNS PTR record for $NET_TARGET: $ptr"
+        else
+            net_mod_write_kv "PTR Record" "None"
+            net_mod_write_footer "COMPLETED" "No reverse DNS PTR record found for $NET_TARGET."
+        fi
+        chmod 0640 "$records_file" 2>/dev/null || true
+        net_mod_finish 0
+        return 0
+    fi
 
     local -a a_records=()
     local -a aaaa_records=()
