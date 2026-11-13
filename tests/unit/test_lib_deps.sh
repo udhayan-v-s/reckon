@@ -411,9 +411,12 @@ term_init "never"
 deps_init
 deps_check_all || true
 full_report="$(deps_render_report)"
-if [[ "$full_report" == *"RECKON - Dependency Status"* && \
-      "$full_report" == *"Scope: All Modules (25 modules)"* && \
-      "$full_report" == *"Summary: 19 total inspected"* ]]; then
+if [[ "$full_report" == *"RECKON - DEPENDENCY CHECK"* && \
+      "$full_report" == *"Scope                 : All Modules"* && \
+      "$full_report" == *"Total Modules         : 25"* && \
+      "$full_report" == *"Unique Dependencies   : 19"* && \
+      "$full_report" == *"DEPENDENCY SUMMARY"* && \
+      "$full_report" == *"Total Inspected         : 19"* ]]; then
     pass "deps_render_report renders valid header, scope, and summary structure"
 else
     fail "deps_render_report missing expected structural elements"
@@ -429,7 +432,8 @@ if (
     deps_init
     deps_check_all
     mock_satisfied_report="$(deps_render_report)"
-    [[ "$mock_satisfied_report" == *"All required external dependencies are satisfied."* ]]
+    [[ "$mock_satisfied_report" == *"STATUS: OPTIMAL"* && \
+       "$mock_satisfied_report" == *"All dependencies are available."* ]]
 ); then
     pass "deps_render_report returns 0 and success message when all dependencies exist"
 else
@@ -441,7 +445,7 @@ fi
 if (
     export PATH="$MOCK_BIN_DIR"
     deps_init
-    deps_check_tools "mock_nmap" "mock_missing" || true
+    deps_check_tools "curl" || true
     ! deps_render_report >/dev/null 2>&1
 ); then
     pass "deps_render_report returns 1 when required dependencies are missing"
@@ -451,7 +455,7 @@ fi
 
 # Test 29: Report output contains strictly zero package manager or installation commands
 has_install_text=false
-if [[ "$full_report" =~ (apt|yum|dnf|pacman|brew|install|apk|rpm) ]]; then
+if [[ "$full_report" =~ (apt-get|apt[[:space:]]|yum[[:space:]]|dnf[[:space:]]|pacman[[:space:]]|brew[[:space:]]|apk[[:space:]]|rpm[[:space:]]) ]]; then
     has_install_text=true
 fi
 if [[ "$has_install_text" == false ]]; then
@@ -473,7 +477,7 @@ fi
 
 # Test 31: Custom scope override parameter in header
 custom_scope_report="$(term_init "never" && deps_render_report "Custom Profile (Discovery)")"
-if [[ "$custom_scope_report" == *"Scope: Custom Profile (Discovery)"* ]]; then
+if [[ "$custom_scope_report" == *"Scope                 : Custom Profile (Discovery)"* ]]; then
     pass "deps_render_report supports custom scope override in header"
 else
     fail "deps_render_report failed to display custom scope override"

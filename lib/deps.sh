@@ -107,71 +107,71 @@ deps_get_tool_desc() {
     local tool="${1:-}"
 
     case "$tool" in
-        nmap)
-            printf '%s\n' "Network exploration tool and security / port scanner"
-            ;;
-        fping)
-            printf '%s\n' "High-performance ICMP ping sweep utility"
+        curl)
+            printf '%s\n' "URL transfer utility"
             ;;
         dig)
-            printf '%s\n' "DNS lookup and domain interrogation utility"
-            ;;
-        nc)
-            printf '%s\n' "Arbitrary TCP and UDP connection and listening utility (netcat)"
-            ;;
-        ssh-keyscan)
-            printf '%s\n' "SSH public host key gatherer"
-            ;;
-        ssh-audit)
-            printf '%s\n' "SSH server security auditing and configuration analysis tool"
-            ;;
-        curl)
-            printf '%s\n' "Command line tool for transferring data with URLs"
-            ;;
-        openssl)
-            printf '%s\n' "Cryptography toolkit and TLS/SSL diagnostic utility"
-            ;;
-        smbclient)
-            printf '%s\n' "SMB/CIFS file sharing and share enumeration client"
-            ;;
-        enum4linux-ng)
-            printf '%s\n' "Windows and Samba information enumeration tool"
-            ;;
-        httpx)
-            printf '%s\n' "Fast and multi-purpose HTTP probing and analysis toolkit"
-            ;;
-        subfinder)
-            printf '%s\n' "Passive subdomain discovery and enumeration tool"
+            printf '%s\n' "DNS lookup utility"
             ;;
         dnsx)
-            printf '%s\n' "Multi-purpose DNS query, probe, and resolution toolkit"
+            printf '%s\n' "DNS query and resolution toolkit"
             ;;
-        katana)
-            printf '%s\n' "Next-generation crawling and spidering framework"
-            ;;
-        whatweb)
-            printf '%s\n' "Web technology identifier and CMS detector"
-            ;;
-        wafw00f)
-            printf '%s\n' "Web Application Firewall (WAF) fingerprinting tool"
+        enum4linux-ng)
+            printf '%s\n' "Windows and Samba enumeration"
             ;;
         ffuf)
-            printf '%s\n' "Fast web fuzzer for directory, file, and vhost discovery"
+            printf '%s\n' "Web content and virtual host fuzzer"
             ;;
-        testssl.sh)
-            printf '%s\n' "TLS/SSL cipher suites and cryptographic vulnerability checker"
+        fping)
+            printf '%s\n' "ICMP ping sweep utility"
             ;;
         gau)
-            printf '%s\n' "Fetch known URLs from AlienVault, Wayback Machine, and Common Crawl"
+            printf '%s\n' "Historical URL discovery"
+            ;;
+        httpx)
+            printf '%s\n' "HTTP probing and analysis toolkit"
+            ;;
+        katana)
+            printf '%s\n' "Web crawling and spidering"
+            ;;
+        nc)
+            printf '%s\n' "Netcat network utility"
+            ;;
+        nmap)
+            printf '%s\n' "Network scanner"
+            ;;
+        openssl)
+            printf '%s\n' "TLS/SSL diagnostic toolkit"
+            ;;
+        smbclient)
+            printf '%s\n' "SMB/CIFS client"
+            ;;
+        ssh-audit)
+            printf '%s\n' "SSH security auditing"
+            ;;
+        ssh-keyscan)
+            printf '%s\n' "SSH host key collection"
+            ;;
+        subfinder)
+            printf '%s\n' "Passive subdomain discovery"
+            ;;
+        testssl.sh)
+            printf '%s\n' "TLS/SSL security testing"
+            ;;
+        wafw00f)
+            printf '%s\n' "WAF fingerprinting"
+            ;;
+        whatweb)
+            printf '%s\n' "Web technology identification"
             ;;
         feroxbuster)
-            printf '%s\n' "Fast, simple, recursive content discovery tool"
+            printf '%s\n' "Fast content discovery tool"
             ;;
         amass)
-            printf '%s\n' "In-depth attack surface mapping and asset discovery tool"
+            printf '%s\n' "Attack surface mapping tool"
             ;;
         host)
-            printf '%s\n' "DNS lookup utility for resolving hostnames to IP addresses"
+            printf '%s\n' "DNS lookup utility"
             ;;
         *)
             printf '%s\n' "External reconnaissance utility"
@@ -448,11 +448,11 @@ deps_render_report() {
     # Determine scope description.
     if [[ -n "$custom_scope" ]]; then
         scope_text="$custom_scope"
-    elif (( ${#DEPS_CHECKED_MODULES[@]} == 25 )); then
-        scope_text="All Modules (25 modules)"
+    elif (( ${#DEPS_CHECKED_MODULES[@]} == 25 )) || (( ${#DEPS_CHECKED_MODULES[@]} == 0 )); then
+        scope_text="All Modules"
     elif (( ${#DEPS_CHECKED_MODULES[@]} > 0 )); then
         local IFS=', '
-        scope_text="Modules: ${DEPS_CHECKED_MODULES[*]} (${#DEPS_CHECKED_MODULES[@]} modules)"
+        scope_text="${DEPS_CHECKED_MODULES[*]}"
     else
         scope_text="Direct tool inspection ($total_count tools)"
     fi
@@ -508,20 +508,22 @@ deps_render_report() {
         esac
     done
 
-    # Header
+    # Header Card
     printf '%s\n' "================================================================================"
     if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-        printf '                       %s\n' "$(term_bold "RECKON - DEPENDENCY DASHBOARD")"
+        printf '                         %s\n' "$(term_bold "RECKON - DEPENDENCY CHECK")"
     else
-        printf '                       RECKON - DEPENDENCY DASHBOARD\n'
+        printf '                         RECKON - DEPENDENCY CHECK\n'
     fi
     printf '%s\n\n' "================================================================================"
-    printf '  RECKON - Dependency Status\n'
-    printf '  Scope: %s\n' "$scope_text"
+
+    printf '  %-22s: %s\n' "Scope" "$scope_text"
     if (( ${#DEPS_CHECKED_MODULES[@]} > 0 )); then
-        printf '  Modules: %d\n' "${#DEPS_CHECKED_MODULES[@]}"
+        printf '  %-22s: %d\n' "Total Modules" "${#DEPS_CHECKED_MODULES[@]}"
+    else
+        printf '  %-22s: %d\n' "Total Modules" "25"
     fi
-    printf '  Unique Tools: %d\n' "$total_count"
+    printf '  %-22s: %d\n' "Unique Dependencies" "$total_count"
 
     # Helper function to print a tier block
     _deps_print_tier_block() {
@@ -530,9 +532,15 @@ deps_render_report() {
         local -a tools_list=("$@")
         (( ${#tools_list[@]} == 0 )) && return 0
 
+        local tool_lbl="TOOLS"
+        (( ${#tools_list[@]} == 1 )) && tool_lbl="TOOL"
+        local cnt_str="${#tools_list[@]} ${tool_lbl}"
+
         printf '\n%s\n' "--------------------------------------------------------------------------------"
-        printf '  %s\n' "$tier_title"
+        printf '  %-62s%s\n' "$tier_title" "$cnt_str"
         printf '%s\n\n' "--------------------------------------------------------------------------------"
+
+        printf '  %-12s%-16s%s\n' "STATUS" "TOOL" "DESCRIPTION"
 
         for tool in "${tools_list[@]}"; do
             desc="$(deps_get_tool_desc "$tool")"
@@ -545,21 +553,22 @@ deps_render_report() {
                 fi
             done
 
+            local badge_str
             if [[ "$is_avail" == true ]]; then
                 if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                    badge="$(term_green "[FOUND]  ")"
+                    badge_str="$(term_green "[FOUND]")     "
                 else
-                    badge="[FOUND]  "
+                    badge_str="[FOUND]     "
                 fi
             else
                 if declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                    badge="$(term_red "[MISSING]")"
+                    badge_str="$(term_red "[MISSING]")   "
                 else
-                    badge="[MISSING]"
+                    badge_str="[MISSING]   "
                 fi
             fi
 
-            printf '  %s  %-15s %s\n' "$badge" "$tool" "$desc"
+            printf '  %s%-16s%s\n' "$badge_str" "$tool" "$desc"
         done
     }
 
@@ -573,14 +582,6 @@ deps_render_report() {
         _deps_print_tier_block "OPTIONAL DEPENDENCIES" "${opt_tools[@]}"
     fi
 
-    # Determine status string
-    local status_str="SATISFIED"
-    if (( req_missing > 0 )); then
-        status_str="CRITICAL"
-    elif (( rec_missing > 0 || opt_missing > 0 )); then
-        status_str="WARNINGS"
-    fi
-
     # Footer summary
     printf '\n%s\n' "================================================================================"
     if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
@@ -589,35 +590,53 @@ deps_render_report() {
         printf '  DEPENDENCY SUMMARY\n'
     fi
     printf '%s\n\n' "================================================================================"
-    printf '  Summary: %d total inspected | %d available | %d missing\n' \
-        "$total_count" "$avail_count" "$missing_count"
-    printf '  Total Inspected         : %d\n' "$total_count"
-    printf '  Available               : %d\n' "$avail_count"
-    printf '  Missing Required        : %d\n' "$req_missing"
-    printf '  Missing Recommended     : %d\n' "$rec_missing"
-    printf '  Missing Optional        : %d\n\n' "$opt_missing"
 
-    if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-        if [[ "$status_str" == "SATISFIED" ]]; then
-            printf '  Status                  : %s\n' "$(term_green "SATISFIED")"
-        elif [[ "$status_str" == "WARNINGS" ]]; then
-            printf '  Status                  : %s\n' "$(term_yellow "WARNINGS")"
-        else
-            printf '  Status                  : %s\n' "$(term_red "CRITICAL")"
-        fi
-    else
-        printf '  Status                  : %s\n' "$status_str"
-    fi
-    printf '%s\n' "================================================================================"
+    printf '  %-24s: %d\n' "Total Inspected" "$total_count"
+    printf '  %-24s: %d\n' "Available" "$avail_count"
+    printf '  %-24s: %d\n\n' "Missing" "$missing_count"
 
-    if (( missing_count == 0 )); then
-        if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-            printf '%s\n' "$(term_green "All required external dependencies are satisfied.")"
+    printf '  %-24s: %d\n' "Required Missing" "$req_missing"
+    printf '  %-24s: %d\n' "Recommended Missing" "$rec_missing"
+    printf '  %-24s: %d\n' "Optional Missing" "$opt_missing"
+
+    # Status & readiness message
+    printf '\n%s\n' "--------------------------------------------------------------------------------"
+    if (( req_missing > 0 )); then
+        if declare -f term_bold >/dev/null 2>&1 && declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+            printf '  STATUS: %s\n\n' "$(term_red "BLOCKED")"
         else
-            printf 'All required external dependencies are satisfied.\n'
+            printf '  STATUS: BLOCKED\n\n'
         fi
+        printf '  Missing required dependencies prevent normal execution.\n'
+        printf '  Install the missing required tools before starting a scan.\n'
+        printf '%s\n' "================================================================================"
+        return 1
+    elif (( rec_missing > 0 || opt_missing > 0 )); then
+        if declare -f term_bold >/dev/null 2>&1 && declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+            printf '  STATUS: %s\n\n' "$(term_yellow "WARNINGS")"
+        else
+            printf '  STATUS: WARNINGS\n\n'
+        fi
+        printf '  All required dependencies are available.\n'
+        if (( rec_missing > 0 && opt_missing > 0 )); then
+            printf '  Some recommended and optional dependencies are missing.\n\n'
+        elif (( rec_missing > 0 )); then
+            printf '  Some recommended dependencies are missing.\n\n'
+        else
+            printf '  Some optional dependencies are missing.\n\n'
+        fi
+        printf '  RECKON can proceed with available functionality.\n'
+        printf '%s\n' "================================================================================"
         return 0
     else
-        return 1
+        if declare -f term_bold >/dev/null 2>&1 && declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+            printf '  STATUS: %s\n\n' "$(term_green "OPTIMAL")"
+        else
+            printf '  STATUS: OPTIMAL\n\n'
+        fi
+        printf '  All dependencies are available.\n\n'
+        printf '  RECKON can proceed with full functionality.\n'
+        printf '%s\n' "================================================================================"
+        return 0
     fi
 }

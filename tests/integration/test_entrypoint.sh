@@ -468,8 +468,9 @@ assert_failure \
 
 # Test 31: CLI --check executes cleanly without target.
 CHECK_OUTPUT="$("$PROJECT_ROOT/reckon" --check 2>&1 || true)"
-if [[ "$CHECK_OUTPUT" == *"RECKON - Dependency Status"* && \
-      "$CHECK_OUTPUT" == *"Summary: 19 total inspected"* ]]; then
+if [[ "$CHECK_OUTPUT" == *"RECKON - DEPENDENCY CHECK"* && \
+      "$CHECK_OUTPUT" == *"DEPENDENCY SUMMARY"* && \
+      "$CHECK_OUTPUT" == *"Total Inspected         : 19"* ]]; then
     pass "CLI --check executes without requiring a scan target"
 else
     fail "CLI --check output missing expected dependency status header"
@@ -478,15 +479,15 @@ fi
 # Test 32: CLI --check with satisfied module (dns).
 assert_success_output \
     "CLI --check succeeds for satisfied module dependencies" \
-    "All required external dependencies are satisfied." \
+    "STATUS: OPTIMAL" \
     "[MISSING]" \
     "$PROJECT_ROOT/reckon" --check --module dns
 
-# Test 33: CLI --check with missing module dependencies exits with status 1.
-assert_failure \
-    "CLI --check returns status 1 when dependencies are missing" \
-    1 \
-    "[MISSING]" \
+# Test 33: CLI --check returns status 0 with WARNINGS when only recommended dependencies are missing.
+assert_success_output \
+    "CLI --check returns status 0 with WARNINGS when only recommended dependencies are missing" \
+    "STATUS: WARNINGS" \
+    "STATUS: BLOCKED" \
     "$PROJECT_ROOT/reckon" --check --module crawl
 
 # Test 34: CLI --check records audit log entry when log file is configured.
