@@ -20,6 +20,8 @@ readonly _RECKON_LIB_DEPS_LOADED=1
 DEPS_AVAILABLE_TOOLS=()
 DEPS_MISSING_TOOLS=()
 DEPS_CHECKED_MODULES=()
+DEPS_AVAILABLE_WORDLISTS=()
+DEPS_MISSING_WORDLISTS=()
 
 # Last error recorded by dependency functions.
 DEPS_ERROR=""
@@ -76,12 +78,41 @@ readonly _DEPS_ALL_TOOLS=(
     "whatweb"
 )
 
+# Canonical list of default system wordlists checked for reconnaissance.
+readonly _DEPS_DEFAULT_WORDLISTS=(
+    "Web Content (DIRB):/usr/share/wordlists/dirb/common.txt"
+    "Directories (DirBuster):/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"
+    "Web Content (SecLists):/usr/share/seclists/Discovery/Web-Content/common.txt"
+    "Virtual Hosts (SecLists):/usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt"
+    "DNS Subdomains (dnsmap):/usr/share/wordlists/dnsmap.txt"
+)
+
 # Initialize or reset dependency tracking state.
 deps_init() {
     DEPS_AVAILABLE_TOOLS=()
     DEPS_MISSING_TOOLS=()
     DEPS_CHECKED_MODULES=()
+    DEPS_AVAILABLE_WORDLISTS=()
+    DEPS_MISSING_WORDLISTS=()
     DEPS_ERROR=""
+}
+
+# Inspect presence and readability of standard default wordlists.
+# Populates DEPS_AVAILABLE_WORDLISTS and DEPS_MISSING_WORDLISTS.
+deps_check_wordlists() {
+    DEPS_AVAILABLE_WORDLISTS=()
+    DEPS_MISSING_WORDLISTS=()
+
+    local entry cat path
+    for entry in "${_DEPS_DEFAULT_WORDLISTS[@]}"; do
+        cat="${entry%%:*}"
+        path="${entry#*:}"
+        if [[ -f "$path" && -r "$path" ]]; then
+            DEPS_AVAILABLE_WORDLISTS+=("$entry")
+        else
+            DEPS_MISSING_WORDLISTS+=("$entry")
+        fi
+    done
 }
 
 # Check if a single external tool is available in PATH.
@@ -405,6 +436,7 @@ deps_check_modules() {
 
     deps_check_tools "${collected_tools[@]}"
     ret=$?
+    deps_check_wordlists
 
     return "$ret"
 }
@@ -416,6 +448,9 @@ deps_check_modules() {
 deps_check_all() {
     DEPS_CHECKED_MODULES=("${_DEPS_ALL_MODULES[@]}")
     deps_check_tools "${_DEPS_ALL_TOOLS[@]}"
+    local ret=$?
+    deps_check_wordlists
+    return "$ret"
 }
 
 # Render a structured terminal report of dependency inspection results.
@@ -584,16 +619,12 @@ deps_render_report() {
 
     # Print default wordlists check block
     _deps_print_wordlists_block() {
-        local -a wl_entries=(
-            "Web Content (DIRB):/usr/share/wordlists/dirb/common.txt"
-            "Directories (DirBuster):/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"
-            "Web Content (SecLists):/usr/share/seclists/Discovery/Web-Content/common.txt"
-            "Virtual Hosts (SecLists):/usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt"
-            "DNS Subdomains (dnsmap):/usr/share/wordlists/dnsmap.txt"
-        )
+        if (( ${#DEPS_AVAILABLE_WORDLISTS[@]} == 0 && ${#DEPS_MISSING_WORDLISTS[@]} == 0 )); then
+            deps_check_wordlists
+        fi
 
         local custom_wl="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}"
-        local total_wl=${#wl_entries[@]}
+        local total_wl=${#_DEPS_DEFAULT_WORDLISTS[@]}
         [[ -n "$custom_wl" ]] && (( total_wl += 1 ))
 
         printf '\n%s\n' "--------------------------------------------------------------------------------"
@@ -621,7 +652,7 @@ deps_render_report() {
         fi
 
         local entry cat path
-        for entry in "${wl_entries[@]}"; do
+        for entry in "${_DEPS_DEFAULT_WORDLISTS[@]}"; do
             cat="${entry%%:*}"
             path="${entry#*:}"
 
@@ -657,7 +688,13 @@ deps_render_report() {
 
     printf '  %-24s: %d\n' "Total Inspected" "$total_count"
     printf '  %-24s: %d\n' "Available" "$avail_count"
-    printf '  %-24s: %d\n\n' "Missing" "$missing_count"
+    printf '  %-24s: %d\n' "Missing" "$missing_count"
+
+    local total_wl=$(( ${#DEPS_AVAILABLE_WORDLISTS[@]} + ${#DEPS_MISSING_WORDLISTS[@]} ))
+    if (( total_wl > 0 )); then
+        printf '  %-24s: %d / %d found (fallbacks active)\n' "Default Wordlists" "${#DEPS_AVAILABLE_WORDLISTS[@]}" "$total_wl"
+    fi
+    printf '\n'
 
     printf '  %-24s: %d\n' "Required Missing" "$req_missing"
     printf '  %-24s: %d\n' "Recommended Missing" "$rec_missing"

@@ -483,4 +483,13 @@ else
     fail "deps_render_report failed to display custom scope override"
 fi
 
+# Test 32: Wordlist dependency checking populates wordlist arrays
+deps_init
+deps_check_wordlists
+if (( ${#DEPS_AVAILABLE_WORDLISTS[@]} + ${#DEPS_MISSING_WORDLISTS[@]} == 5 )); then
+    pass "deps_check_wordlists evaluates all 5 canonical system wordlists"
+else
+    fail "deps_check_wordlists did not inspect expected wordlist count"
+fi
+
 test_summary
