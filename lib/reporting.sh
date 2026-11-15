@@ -112,6 +112,18 @@ reporting_export_markdown() {
     meta_out="$(jq -r '.scan_metadata.output_directory // empty' "$results_file" 2>/dev/null || true)"
     [[ -z "$meta_out" ]] && meta_out="$output_dir"
 
+    local scan_wordlist
+    scan_wordlist="$(jq -r '.scan_metadata.wordlist // empty' "$results_file" 2>/dev/null || true)"
+    if [[ -z "$scan_wordlist" ]]; then
+        if [[ -n "${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}" ]]; then
+            scan_wordlist="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}"
+        elif [[ -f "/usr/share/wordlists/dirb/common.txt" ]]; then
+            scan_wordlist="/usr/share/wordlists/dirb/common.txt"
+        elif [[ -f "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt" ]]; then
+            scan_wordlist="/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"
+        fi
+    fi
+
     total_targets="$(jq -r '.summary.total_targets // 0' "$results_file" 2>/dev/null)"
     hosts_up="$(jq -r '.summary.total_hosts_up // 0' "$results_file" 2>/dev/null)"
     open_ports="$(jq -r '.summary.total_open_ports // 0' "$results_file" 2>/dev/null)"
@@ -248,6 +260,9 @@ EOF
         printf '| **Target** | `%s` |\n' "$target_display"
         printf '| **Target Type** | %s |\n' "$target_type_str"
         printf '| **Scan Scope** | %s |\n' "$mode_label"
+        if [[ "$has_web_mode" == true && -n "$scan_wordlist" ]]; then
+            printf '| **Wordlist** | `%s` |\n' "$scan_wordlist"
+        fi
         printf '| **Output Directory** | `%s` |\n\n' "$display_out_dir"
 
         printf -- '---\n\n'
@@ -791,7 +806,9 @@ EOF
                     (( t_web_skip += 1 ))
                 else
                     printf -- '- **Status:** `COMPLETED`\n'
-                    printf -- '- **Progress:** Directory discovery complete\n\n'
+                    printf -- '- **Progress:** Directory discovery complete\n'
+                    [[ -n "$scan_wordlist" ]] && printf -- '- **Wordlist:** `%s`\n' "$scan_wordlist"
+                    printf '\n'
                     if (( dir_count > 0 )); then
                         printf '| Path | Status Code | Size | Redirect |\n'
                         printf '| :--- | :--- | :--- | :--- |\n'
@@ -825,7 +842,9 @@ EOF
                     (( t_web_skip += 1 ))
                 else
                     printf -- '- **Status:** `COMPLETED`\n'
-                    printf -- '- **Progress:** Sensitive file discovery complete\n\n'
+                    printf -- '- **Progress:** Sensitive file discovery complete\n'
+                    [[ -n "$scan_wordlist" ]] && printf -- '- **Wordlist:** `%s`\n' "$scan_wordlist"
+                    printf '\n'
                     if (( file_count > 0 )); then
                         printf '| Path | Status Code | Size | Category |\n'
                         printf '| :--- | :--- | :--- | :--- |\n'
@@ -859,7 +878,9 @@ EOF
                     (( t_web_skip += 1 ))
                 else
                     printf -- '- **Status:** `COMPLETED`\n'
-                    printf -- '- **Progress:** Virtual host discovery complete\n\n'
+                    printf -- '- **Progress:** Virtual host discovery complete\n'
+                    [[ -n "$scan_wordlist" ]] && printf -- '- **Wordlist:** `%s`\n' "$scan_wordlist"
+                    printf '\n'
                     if (( vh_count > 0 )); then
                         printf '| Virtual Host | Status Code | Size | Redirect |\n'
                         printf '| :--- | :--- | :--- | :--- |\n'
@@ -1267,6 +1288,18 @@ reporting_export_text() {
     meta_out="$(jq -r '.scan_metadata.output_directory // empty' "$results_file" 2>/dev/null || true)"
     [[ -z "$meta_out" ]] && meta_out="$output_dir"
 
+    local scan_wordlist
+    scan_wordlist="$(jq -r '.scan_metadata.wordlist // empty' "$results_file" 2>/dev/null || true)"
+    if [[ -z "$scan_wordlist" ]]; then
+        if [[ -n "${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}" ]]; then
+            scan_wordlist="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}"
+        elif [[ -f "/usr/share/wordlists/dirb/common.txt" ]]; then
+            scan_wordlist="/usr/share/wordlists/dirb/common.txt"
+        elif [[ -f "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt" ]]; then
+            scan_wordlist="/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"
+        fi
+    fi
+
     total_targets="$(jq -r '.summary.total_targets // 0' "$results_file" 2>/dev/null)"
     hosts_up="$(jq -r '.summary.total_hosts_up // 0' "$results_file" 2>/dev/null)"
     open_ports="$(jq -r '.summary.total_open_ports // 0' "$results_file" 2>/dev/null)"
@@ -1386,6 +1419,9 @@ EOF
         printf '  %-22s: %s\n' "Target" "$target_display"
         printf '  %-22s: %s\n' "Target Type" "$target_type_str"
         printf '  %-22s: %s\n' "Scan Scope" "$mode_label"
+        if [[ "$has_web_mode" == true && -n "$scan_wordlist" ]]; then
+            printf '  %-22s: %s\n' "Wordlist" "$scan_wordlist"
+        fi
         local display_out_dir="$meta_out"
         if (( targets_len == 1 )); then
             local s_slug="${first_target//[^a-zA-Z0-9._-]/_}"
@@ -1978,6 +2014,7 @@ EOF
             else
                 printf '        %-13s: %s\n' "Status" "COMPLETED"
                 printf '        %-13s: %s\n' "Progress" "Directory discovery complete"
+                [[ -n "$scan_wordlist" ]] && printf '        %-13s: %s\n' "Wordlist" "$scan_wordlist"
                 if (( dir_count > 0 )); then
                     printf '\n        DISCOVERED DIRECTORIES\n\n'
                     printf '        %-29s%-13s%-11s%s\n' "PATH" "STATUS" "SIZE" "REDIRECT"
@@ -2011,6 +2048,7 @@ EOF
             else
                 printf '        %-13s: %s\n' "Status" "COMPLETED"
                 printf '        %-13s: %s\n' "Progress" "Sensitive file discovery complete"
+                [[ -n "$scan_wordlist" ]] && printf '        %-13s: %s\n' "Wordlist" "$scan_wordlist"
                 if (( file_count > 0 )); then
                     printf '\n        DISCOVERED FILES\n\n'
                     printf '        %-29s%-13s%-11s%s\n' "PATH" "STATUS" "SIZE" "CATEGORY"
@@ -2044,6 +2082,7 @@ EOF
             else
                 printf '        %-13s: %s\n' "Status" "COMPLETED"
                 printf '        %-13s: %s\n' "Progress" "Virtual host discovery complete"
+                [[ -n "$scan_wordlist" ]] && printf '        %-13s: %s\n' "Wordlist" "$scan_wordlist"
                 if (( vh_count > 0 )); then
                     printf '\n        VIRTUAL HOSTS\n\n'
                     printf '        %-29s%-13s%-11s%s\n' "VHOST HOSTNAME" "STATUS" "SIZE" "REDIRECT"
@@ -2391,6 +2430,18 @@ reporting_export_html() {
     scan_ts="$(jq -r '.scan_metadata.timestamp // "Unknown"' "$results_file" 2>/dev/null)"
     meta_out="$(jq -r '.scan_metadata.output_directory // empty' "$results_file" 2>/dev/null || true)"
     [[ -z "$meta_out" ]] && meta_out="$output_dir"
+
+    local scan_wordlist
+    scan_wordlist="$(jq -r '.scan_metadata.wordlist // empty' "$results_file" 2>/dev/null || true)"
+    if [[ -z "$scan_wordlist" ]]; then
+        if [[ -n "${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}" ]]; then
+            scan_wordlist="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}"
+        elif [[ -f "/usr/share/wordlists/dirb/common.txt" ]]; then
+            scan_wordlist="/usr/share/wordlists/dirb/common.txt"
+        elif [[ -f "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt" ]]; then
+            scan_wordlist="/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"
+        fi
+    fi
     total_targets="$(jq -r '.summary.total_targets // 0' "$results_file" 2>/dev/null)"
     hosts_up="$(jq -r '.summary.total_hosts_up // 0' "$results_file" 2>/dev/null)"
     open_ports="$(jq -r '.summary.total_open_ports // 0' "$results_file" 2>/dev/null)"

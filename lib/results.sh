@@ -1088,6 +1088,17 @@ results_generate_json() {
         fi
     fi
 
+    local wl_json_val=""
+    if [[ -n "${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}" ]]; then
+        wl_json_val="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}"
+    elif [[ -f "/usr/share/wordlists/dirb/common.txt" ]]; then
+        wl_json_val="/usr/share/wordlists/dirb/common.txt"
+    elif [[ -f "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt" ]]; then
+        wl_json_val="/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"
+    else
+        wl_json_val="builtin"
+    fi
+
     local raw_json_tmp="${out_json}.tmp"
     cat <<EOF > "$raw_json_tmp"
 {
@@ -1100,7 +1111,8 @@ results_generate_json() {
     "scan_profile": "${CONFIG_EFFECTIVE_PROFILE:-${CLI_PROFILE:-default}}",
     "timestamp": "$timestamp",
     "output_directory": "$meta_out_dir",
-    "targets_count": $RESULTS_TOTAL_TARGETS
+    "targets_count": $RESULTS_TOTAL_TARGETS,
+    "wordlist": "$wl_json_val"
   },
   "summary": {
     "total_targets": $RESULTS_TOTAL_TARGETS,
