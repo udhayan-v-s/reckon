@@ -856,67 +856,88 @@ EOF
 cli_show_help() {
 
     cat <<EOF
-RECKON - Network and Web Reconnaissance Toolkit
+RECKON — Modular Network & Web Reconnaissance Toolkit
+Version: 1.0.0
 
 Usage:
-    reckon [OPTIONS]
+    reckon -t <TARGET> [OPTIONS]
+    reckon -T <FILE>   [OPTIONS]
+    reckon [GENERAL_OPTIONS]
 
-General options:
-    -h, --help                  Display this help message.
-    -V, --version               Display application version.
-        --no-banner             Suppress the startup banner.
-    -c, --check, --check-deps   Check the environment and dependencies.
-        --list-modules          List available reconnaissance modules.
-        --dry-run               Simulate scan execution without running tools.
+Target Specification:
+    -t, --target TARGET         Specify a single scan target (IP, CIDR, hostname, domain, URL).
+    -T, --targets-file FILE     Specify a file containing line-delimited targets.
 
-Target options:
-    -t, --target TARGET         Specify a single scan target.
-    -T, --targets-file FILE     Specify a file containing scan targets.
+Scan Selection & Modules:
+    -m, --mode MODE             Reconnaissance mode: 'network', 'web', or 'all' (default: network).
+    -n, --network               Shorthand for '--mode network'.
+    -w, --web                   Shorthand for '--mode web'.
+    -M, --module, --modules MOD Comma-separated list of specific modules to run.
+    -x, --exclude MODS          Comma-separated list of reconnaissance modules to exclude.
+        --profile PROFILE       Scan profile configuration (e.g. default, aggressive).
+        --list-modules          Display all available reconnaissance modules and exit.
 
-Scan selection:
-    -n, --network               Select network reconnaissance.
-    -w, --web                   Select web reconnaissance.
-    -m, --mode MODE             Select scan mode (network, web, all).
-        --module, --modules MOD Select specific reconnaissance modules.
-    -x, --exclude MODS          Exclude specified reconnaissance modules.
-        --profile PROFILE       Select a scan profile.
+Execution & Fuzzing Options:
+    -p, --ports PORTS           Target ports (e.g. 80,443 | 1-1000 | top-100 | all).
+    -p-, --all-ports            Scan all 65535 ports (equivalent to '--ports all').
+    -e, --extensions EXTS       Comma-separated file extensions to fuzz (e.g. php,html,txt,bak).
+        --wordlist FILE         Custom wordlist path for directory, file, or vhost fuzzing.
+        --threads NUMBER        Concurrent execution threads (default: 10, or 40 for ffuf).
+        --timeout SECONDS       Execution / probe timeout in seconds (default: 300).
+        --rate-limit NUMBER     Maximum request rate limit in requests/sec (default: 5).
+        --retries NUMBER        Probe retry count upon network failure (default: 1).
+        --config FILE           Load scan settings from a JSON configuration file.
 
-Output and reporting:
-    -o, --output DIR            Specify the output directory.
-    -f, --format, --report FMTS Specify report formats (JSON, MD, TXT).
-        --no-report             Disable report generation.
-        --log-file FILE         Specify the log file.
+Output & Reporting Options (Supported Formats: JSON, MD, TXT):
+    -o, --output DIR            Directory for scan results (default: results/<target>/).
+    -f, --format, --report FMTS Comma-separated report formats: JSON, MD, TXT.
+        --no-report             Disable consolidated report export.
+        --log-file FILE         Path to custom scan log file.
 
-Execution options:
-        --timeout SECONDS       Set the execution timeout.
-        --threads NUMBER        Set the execution thread count.
-        --rate-limit NUMBER     Set the execution rate limit.
-        --retries NUMBER        Set the retry count.
-    -p, --ports PORTS           Specify target ports (e.g. 80,443, 1-1000, all).
-        --all-ports, -p-        Scan all 65535 ports (equivalent to --ports all).
-        --wordlist FILE         Specify an enumeration wordlist.
-    -e, --extensions EXTS       Specify file extensions to discover (e.g. php,html,txt).
-        --config FILE           Specify a configuration file.
-
-Display options:
-    -v, --verbose               Enable verbose output.
-    -q, --quiet                 Suppress non-essential output.
-        --debug                 Enable debug mode.
-        --color                 Force colored output.
-        --no-color              Disable colored output.
+Display & General Options:
+    -v, --verbose               Enable verbose operational output.
+    -q, --quiet                 Suppress non-essential banner and progress output.
+        --debug                 Enable internal debug logging.
+        --color                 Force ANSI colored output.
+        --no-color              Disable ANSI colored output.
+        --no-banner             Suppress startup ASCII banner.
+    -c, --check, --check-deps   Validate environment, tools, and dependencies, then exit.
+        --dry-run               Simulate execution plan without running active probes.
+    -V, --version               Display version information and exit.
+    -h, --help                  Display this help reference and exit.
 
 Examples:
-    reckon --help
-    reckon --version
-    reckon --check-deps
-    reckon --target example.com
-    reckon --target 192.0.2.10 --network
-    reckon --target https://example.com --web
-    reckon --target example.com --mode all
-    reckon --target example.com --modules host,dns
-    reckon --target example.com --network --dry-run
-    reckon --target example.com --web --report json,md,txt
-    reckon --target example.com --network --debug --no-color
+    1. Basic network reconnaissance on a host:
+       reckon -t 192.168.1.1 -n
+
+    2. Web reconnaissance against an endpoint:
+       reckon -t http://10.10.10.50 -w
+
+    3. Full combined network and web reconnaissance:
+       reckon -t example.com --mode all
+
+    4. Web enumeration with specific file extensions:
+       reckon -t http://10.10.10.50 -w -e php,html,txt,bak
+
+    5. Custom ports and full port range scan:
+       reckon -t 192.168.1.50 -n -p 21,22,80,443,8080,8443
+       reckon -t 10.10.10.100 -n -p-
+
+    6. Custom wordlist with elevated thread concurrency:
+       reckon -t example.com -w --wordlist /usr/share/wordlists/dirb/common.txt --threads 50
+
+    7. Selective module execution (only run specific checks):
+       reckon -t 192.168.1.254 -M host,dns,port,service
+
+    8. Full scan excluding specific modules:
+       reckon -t 10.10.10.20 --mode all -x smb,telnet,waf
+
+    9. Export all 3 consolidated report formats (JSON, MD, TXT) to a custom directory:
+       reckon -t example.com --mode all -f json,md,txt -o /opt/scans/
+
+    10. Dependency check and dry-run execution simulation:
+       reckon --check-deps
+       reckon -t 192.168.1.1 --mode all --dry-run
 
 For more information, see the project README.
 
