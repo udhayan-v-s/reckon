@@ -40,6 +40,7 @@ cli_init() {
     CLI_RETRIES=""
     CLI_PORTS=""
     CLI_WORDLIST=""
+    CLI_EXTENSIONS=""
     CLI_CONFIG=""
 
     # Display options.
@@ -263,6 +264,18 @@ cli_parse_args() {
 
                 CLI_WORDLIST="$2"
                 CLI_EXPLICIT[wordlist]=true
+                shift 2
+                ;;
+
+            # File extensions for web discovery.
+            --extensions|-e)
+
+                if ! cli_require_value "$1" "$#" "${2-}"; then
+                    return 2
+                fi
+
+                CLI_EXTENSIONS="$2"
+                CLI_EXPLICIT[extensions]=true
                 shift 2
                 ;;
 
@@ -882,6 +895,7 @@ Execution options:
     -p, --ports PORTS           Specify target ports (e.g. 80,443, 1-1000, all).
         --all-ports, -p-        Scan all 65535 ports (equivalent to --ports all).
         --wordlist FILE         Specify an enumeration wordlist.
+    -e, --extensions EXTS       Specify file extensions to discover (e.g. php,html,txt).
         --config FILE           Specify a configuration file.
 
 Display options:

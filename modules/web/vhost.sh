@@ -235,7 +235,7 @@ module_vhost_run() {
         elif [[ "$WEB_TARGET_TYPE" == "url_http" ]]; then
             candidate_urls=("http://${domain_base}")
         else
-            candidate_urls=("http://${domain_base}" "https://${domain_base}")
+            candidate_urls=("http://${domain_base}")
         fi
     fi
 
@@ -254,8 +254,9 @@ module_vhost_run() {
     local raw_vhosts_tmp="${task_dir}/.raw_vhosts.tmp"
     : > "$raw_vhosts_tmp"
 
-    local timeout_val="${CONFIG_EFFECTIVE_TIMEOUT:-${CLI_TIMEOUT:-10}}"
-    local threads_val="${CONFIG_EFFECTIVE_THREADS:-${CLI_THREADS:-10}}"
+    local timeout_val=10
+    local threads_val="${CONFIG_EFFECTIVE_THREADS:-${CLI_THREADS:-40}}"
+    (( threads_val < 1 )) && threads_val=40
 
     # 1. Primary FFUF execution
     if [[ "$has_ffuf" == true && ${#candidate_urls[@]} -gt 0 ]]; then
@@ -284,10 +285,12 @@ module_vhost_run() {
                 -H "User-Agent: $user_agent"
                 "-mc" "200,204,301,302,307,401,403,405"
                 -s
-                -o "$ffuf_json"
-                -of json
+                -noninteractive
                 -timeout "$timeout_val"
                 -t "$threads_val"
+                -maxtime 180
+                -o "$ffuf_json"
+                -of json
             )
 
             # Apply baseline content length filter if baseline length is known and non-zero
@@ -295,7 +298,7 @@ module_vhost_run() {
                 ffuf_cmd+=(-fs "$baseline_len")
             fi
 
-            "${ffuf_cmd[@]}" >/dev/null 2>&1 || true
+            "${ffuf_cmd[@]}" < /dev/null >/dev/null 2>&1 || true
 
             if [[ -f "$ffuf_json" && -s "$ffuf_json" ]]; then
                 if web_mod_has_tool "jq"; then

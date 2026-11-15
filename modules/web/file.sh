@@ -98,7 +98,7 @@ _file_classify_path() {
         *.env*|*.git*|*id_rsa*|*.htpasswd*|*.sql|*.zip|*.tar.gz)
             printf '%s\n' "CRITICAL (Credential / Secret Leak)"
             ;;
-        *config*|*settings*|*database.yml*)
+        *.htaccess*|*config*|*settings*|*database.yml*|*.conf|*.ini|*.yml|*.yaml)
             printf '%s\n' "HIGH (Configuration File)"
             ;;
         *phpinfo*|*info.php*|*test.php*)
@@ -117,11 +117,13 @@ _file_classify_path() {
 #
 # Arguments:
 #   $1 - destination path where wordlist file should be placed if generated
+#   $2 - use builtin only flag (default false)
 #
 # Outputs:
 #   Resolved wordlist file path on stdout
 _file_resolve_wordlist() {
     local dest_tmp="$1"
+    local use_builtin_only="${2:-false}"
 
     local configured_wordlist="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}"
     if [[ -n "$configured_wordlist" && -f "$configured_wordlist" && -r "$configured_wordlist" ]]; then
@@ -129,7 +131,26 @@ _file_resolve_wordlist() {
         return 0
     fi
 
-    # Generate the curated sensitive files list in the destination path
+    # When fast engine ffuf is available and not in builtin-only mode,
+    # merge system common wordlist with curated sensitive files.
+    if [[ "$use_builtin_only" != true ]]; then
+        local sys_wordlist
+        for sys_wordlist in \
+            "/usr/share/wordlists/dirb/common.txt" \
+            "/usr/share/seclists/Discovery/Web-Content/common.txt" \
+            "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"; do
+            if [[ -f "$sys_wordlist" && -r "$sys_wordlist" ]]; then
+                {
+                    cat "$sys_wordlist" 2>/dev/null || true
+                    printf '%s\n' "${_FILE_BUILTIN_TARGETS[@]}"
+                } | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^#' | grep -v '^$' | sort -u > "$dest_tmp"
+                printf '%s\n' "$dest_tmp"
+                return 0
+            fi
+        done
+    fi
+
+    # Fallback / curl mode: generate curated sensitive files list
     printf '%s\n' "${_FILE_BUILTIN_TARGETS[@]}" > "$dest_tmp"
     printf '%s\n' "$dest_tmp"
     return 0
@@ -169,7 +190,7 @@ module_file_run() {
     # Resolve wordlist path
     local builtin_tmp="${task_dir}/.builtin_files.tmp"
     local wordlist_path
-    wordlist_path="$(_file_resolve_wordlist "$builtin_tmp")"
+    wordlist_path="$(_file_resolve_wordlist "$builtin_tmp" "$([[ "$has_ffuf" == true ]] && echo false || echo true)")"
 
     local total_words
     total_words="$(wc -l < "$wordlist_path" | tr -d ' ')"
@@ -192,6 +213,28 @@ module_file_run() {
     local raw_files_tmp="${task_dir}/.raw_files.tmp"
     : > "$raw_files_tmp"
 
+    local req_timeout=10
+    local threads_val="${CONFIG_EFFECTIVE_THREADS:-${CLI_THREADS:-40}}"
+    (( threads_val < 1 )) && threads_val=40
+
+    local raw_ext_list="${CONFIG_EFFECTIVE_EXTENSIONS:-${CLI_EXTENSIONS:-php,html,txt,json,bak,xml}}"
+    local ffuf_ext_arg=""
+    if [[ -n "$raw_ext_list" ]]; then
+        local -a norm_exts=()
+        local ext
+        IFS=',' read -ra raw_exts <<< "$raw_ext_list"
+        for ext in "${raw_exts[@]}"; do
+            ext="${ext#"${ext%%[![:space:]]*}"}"
+            ext="${ext%"${ext##*[![:space:]]}"}"
+            [[ -z "$ext" ]] && continue
+            ext="${ext#.}"
+            [[ -n "$ext" ]] && norm_exts+=(".${ext}")
+        done
+        if (( ${#norm_exts[@]} > 0 )); then
+            ffuf_ext_arg="$(IFS=,; echo "${norm_exts[*]}")"
+        fi
+    fi
+
     if [[ "$has_ffuf" == true && ${#candidate_urls[@]} -gt 0 ]]; then
         local base_url
         for base_url in "${candidate_urls[@]}"; do
@@ -199,17 +242,29 @@ module_file_run() {
             base_url="${base_url%/}"
 
             local ffuf_json="${task_dir}/.ffuf_file.json"
-            "$ffuf_bin" -w "${wordlist_path}:FUZZ" \
-                        -u "${base_url}/FUZZ" \
-                        -mc 200,204,301,302,401,403 \
-                        -s \
-                        -o "$ffuf_json" \
-                        -of json \
-                        -H "User-Agent: $user_agent" >/dev/null 2>&1 || true
+            local -a ffuf_cmd=(
+                "$ffuf_bin"
+                -w "${wordlist_path}:FUZZ"
+                -u "${base_url}/FUZZ"
+                -mc "200,204,301,302,401,403"
+                -s
+                -noninteractive
+                -timeout "$req_timeout"
+                -t "$threads_val"
+                -maxtime 180
+                -o "$ffuf_json"
+                -of json
+                -H "User-Agent: $user_agent"
+            )
+            if [[ -n "$ffuf_ext_arg" ]]; then
+                ffuf_cmd+=(-e "$ffuf_ext_arg")
+            fi
+
+            "${ffuf_cmd[@]}" < /dev/null >/dev/null 2>&1 || true
 
             if [[ -f "$ffuf_json" && -s "$ffuf_json" ]]; then
                 if web_mod_has_tool "jq"; then
-                    jq -r '.results[]? | "\(.input.FUZZ // .url)\t\(.status)\t\(.length)"' "$ffuf_json" >> "$raw_files_tmp" 2>/dev/null || true
+                    jq -r '.results[]? | "\((if (.input.FUZZ | length) > 0 then .input.FUZZ elif (.url | length) > 0 then (.url | sub("^https?://[^/]+"; "")) else "/" end))\t\(.status)\t\(.length)"' "$ffuf_json" >> "$raw_files_tmp" 2>/dev/null || true
                 else
                     grep -o '"url": *"[^"]*"' "$ffuf_json" | cut -d'"' -f4 | while IFS= read -r f_url; do
                         [[ -n "$f_url" ]] && printf '%s\t200\t-\n' "$f_url" >> "$raw_files_tmp"
@@ -268,7 +323,7 @@ module_file_run() {
     if [[ -s "$raw_files_tmp" ]]; then
         local path code len
         while IFS=$'\t' read -r path code len || [[ -n "$path" ]]; do
-            [[ -z "$path" ]] && continue
+            [[ -z "$path" || "$path" == "/" ]] && continue
             [[ -z "$code" ]] && code="200"
             [[ -z "$len" ]] && len="-"
 
