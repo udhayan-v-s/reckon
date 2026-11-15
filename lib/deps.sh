@@ -675,7 +675,23 @@ deps_render_report() {
         printf '\n  Note: Built-in fallbacks are embedded in RECKON if system lists are missing.\n'
     }
 
-    _deps_print_wordlists_block
+    # Only print default wordlists if web enumeration modules are in scope or all modules
+    local show_wordlists=false
+    if (( ${#DEPS_CHECKED_MODULES[@]} == 0 || ${#DEPS_CHECKED_MODULES[@]} == 25 )); then
+        show_wordlists=true
+    else
+        local m
+        for m in "${DEPS_CHECKED_MODULES[@]}"; do
+            if [[ "$m" =~ ^(directory|file|vhost)$ ]]; then
+                show_wordlists=true
+                break
+            fi
+        done
+    fi
+
+    if [[ "$show_wordlists" == true ]]; then
+        _deps_print_wordlists_block
+    fi
 
     # Footer summary
     printf '\n%s\n' "================================================================================"
@@ -690,9 +706,11 @@ deps_render_report() {
     printf '  %-24s: %d\n' "Available" "$avail_count"
     printf '  %-24s: %d\n' "Missing" "$missing_count"
 
-    local total_wl=$(( ${#DEPS_AVAILABLE_WORDLISTS[@]} + ${#DEPS_MISSING_WORDLISTS[@]} ))
-    if (( total_wl > 0 )); then
-        printf '  %-24s: %d / %d found (fallbacks active)\n' "Default Wordlists" "${#DEPS_AVAILABLE_WORDLISTS[@]}" "$total_wl"
+    if [[ "$show_wordlists" == true ]]; then
+        local total_wl=$(( ${#DEPS_AVAILABLE_WORDLISTS[@]} + ${#DEPS_MISSING_WORDLISTS[@]} ))
+        if (( total_wl > 0 )); then
+            printf '  %-24s: %d / %d found (fallbacks active)\n' "Default Wordlists" "${#DEPS_AVAILABLE_WORDLISTS[@]}" "$total_wl"
+        fi
     fi
     printf '\n'
 

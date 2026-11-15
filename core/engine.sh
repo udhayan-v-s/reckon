@@ -1088,6 +1088,19 @@ engine_render_dry_run() {
     printf '  %-22s: %s\n' "Target Type" "$target_type_str"
     printf '  %-22s: %s\n' "Scan Mode" "$mode_label"
     printf '  %-22s: %s\n' "Scan Profile" "$profile_str"
+    if [[ "$mode_label" =~ (Web|All) ]]; then
+        local wl_display=""
+        if [[ -n "${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}" ]]; then
+            wl_display="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}} (Custom)"
+        elif [[ -f "/usr/share/wordlists/dirb/common.txt" ]]; then
+            wl_display="/usr/share/wordlists/dirb/common.txt (Default System Wordlist)"
+        elif [[ -f "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt" ]]; then
+            wl_display="/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt (Default System Wordlist)"
+        else
+            wl_display="Embedded Built-in Target List"
+        fi
+        printf '  %-22s: %s\n' "Wordlist" "$wl_display"
+    fi
     printf '  %-22s: %s\n\n' "Total Targets" "$num_targets"
 
     # Render Module Execution Plan
@@ -1581,6 +1594,37 @@ _engine_render_module_card() {
         *) progress_text="Module execution complete" ;;
     esac
     printf '        %-13s: %s\n' "Progress" "$progress_text"
+
+    # Display active wordlist if applicable for the module
+    local wl_info=""
+    local wl_path=""
+    local wl_count=""
+    if [[ -f "$task_dir/output.txt" ]]; then
+        wl_path="$(grep -E '^[[:space:]]*Wordlist[[:space:]]*:' "$task_dir/output.txt" 2>/dev/null | head -n 1 | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)"
+        wl_count="$(grep -E '^[[:space:]]*Wordlist Count[[:space:]]*:' "$task_dir/output.txt" 2>/dev/null | head -n 1 | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)"
+        if [[ -n "$wl_path" ]]; then
+            if [[ "$wl_path" == *"/.builtin_files.tmp"* ]]; then
+                if [[ -f "/usr/share/wordlists/dirb/common.txt" ]]; then
+                    wl_path="/usr/share/wordlists/dirb/common.txt + Curated Targets"
+                else
+                    wl_path="Curated Sensitive Targets (Built-in)"
+                fi
+            elif [[ "$wl_path" == *"/.builtin_dirs.tmp"* ]]; then
+                wl_path="Built-in Directory Wordlist"
+            elif [[ "$wl_path" == *"/.builtin_vhosts.tmp"* ]]; then
+                wl_path="Built-in Virtual Host Candidates"
+            fi
+
+            if [[ -n "$wl_count" ]]; then
+                wl_info="${wl_path} (${wl_count} words)"
+            else
+                wl_info="${wl_path}"
+            fi
+        fi
+    fi
+    if [[ -n "$wl_info" ]]; then
+        printf '        %-13s: %s\n' "Wordlist" "$wl_info"
+    fi
 
     local -a finding_rows=()
     local table_title=""

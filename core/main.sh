@@ -347,6 +347,19 @@ reckon_main() {
             printf '  %-22s: %s\n' "Target" "$target_display"
             printf '  %-22s: %s\n' "Target Type" "$target_type_str"
             printf '  %-22s: %s\n' "Scan Scope" "$scan_scope"
+            if [[ "$mode_label" =~ (Web|All) ]]; then
+                local wl_display=""
+                if [[ -n "${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}" ]]; then
+                    wl_display="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}} (Custom)"
+                elif [[ -f "/usr/share/wordlists/dirb/common.txt" ]]; then
+                    wl_display="/usr/share/wordlists/dirb/common.txt (Default System Wordlist)"
+                elif [[ -f "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt" ]]; then
+                    wl_display="/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt (Default System Wordlist)"
+                else
+                    wl_display="Embedded Built-in Target List"
+                fi
+                printf '  %-22s: %s\n' "Wordlist" "$wl_display"
+            fi
             printf '  %-22s: %s\n\n' "Output Directory" "$out_display"
             printf '%s\n\n' "================================================================================"
 
