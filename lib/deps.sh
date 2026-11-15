@@ -582,6 +582,70 @@ deps_render_report() {
         _deps_print_tier_block "OPTIONAL DEPENDENCIES" "${opt_tools[@]}"
     fi
 
+    # Print default wordlists check block
+    _deps_print_wordlists_block() {
+        local -a wl_entries=(
+            "Web Content (DIRB):/usr/share/wordlists/dirb/common.txt"
+            "Directories (DirBuster):/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"
+            "Web Content (SecLists):/usr/share/seclists/Discovery/Web-Content/common.txt"
+            "Virtual Hosts (SecLists):/usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt"
+            "DNS Subdomains (dnsmap):/usr/share/wordlists/dnsmap.txt"
+        )
+
+        local custom_wl="${CONFIG_EFFECTIVE_WORDLIST:-${CLI_WORDLIST:-}}"
+        local total_wl=${#wl_entries[@]}
+        [[ -n "$custom_wl" ]] && (( total_wl += 1 ))
+
+        printf '\n%s\n' "--------------------------------------------------------------------------------"
+        printf '  %-62s%d LISTS\n' "DEFAULT WORDLISTS" "$total_wl"
+        printf '%s\n\n' "--------------------------------------------------------------------------------"
+
+        printf '  %-12s%-26s%s\n' "STATUS" "CATEGORY" "PATH"
+
+        if [[ -n "$custom_wl" ]]; then
+            local c_badge
+            if [[ -f "$custom_wl" && -r "$custom_wl" ]]; then
+                if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    c_badge="$(term_green "[FOUND]")     "
+                else
+                    c_badge="[FOUND]     "
+                fi
+            else
+                if declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    c_badge="$(term_red "[MISSING]")   "
+                else
+                    c_badge="[MISSING]   "
+                fi
+            fi
+            printf '  %s%-26s%s\n' "$c_badge" "Custom Wordlist (CLI)" "$custom_wl"
+        fi
+
+        local entry cat path
+        for entry in "${wl_entries[@]}"; do
+            cat="${entry%%:*}"
+            path="${entry#*:}"
+
+            local w_badge
+            if [[ -f "$path" && -r "$path" ]]; then
+                if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    w_badge="$(term_green "[FOUND]")     "
+                else
+                    w_badge="[FOUND]     "
+                fi
+            else
+                if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    w_badge="$(term_yellow "[MISSING]")   "
+                else
+                    w_badge="[MISSING]   "
+                fi
+            fi
+            printf '  %s%-26s%s\n' "$w_badge" "$cat" "$path"
+        done
+        printf '\n  Note: Built-in fallbacks are embedded in RECKON if system lists are missing.\n'
+    }
+
+    _deps_print_wordlists_block
+
     # Footer summary
     printf '\n%s\n' "================================================================================"
     if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
