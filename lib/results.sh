@@ -154,9 +154,17 @@ results_parse_dns_records() {
     local -a items=()
 
     if [[ -f "$dns_file" && -s "$dns_file" ]]; then
-        local line
-        while IFS=$'\t' read -r r_type r_name r_data || [[ -n "$r_type" ]]; do
-            [[ -z "$r_type" || "$r_type" =~ ^# || "$r_type" =~ ^\; || "$r_name" =~ ^\; ]] && continue
+        local col1 col2 col3
+        while IFS=$'\t' read -r col1 col2 col3 || [[ -n "$col1" ]]; do
+            [[ -z "$col1" || "$col1" =~ ^# || "$col1" =~ ^\; || "$col2" =~ ^\; ]] && continue
+            local r_type="$col1" r_name="" r_data=""
+            if [[ -n "$col3" ]]; then
+                r_name="$col2"
+                r_data="$col3"
+            else
+                r_name="@"
+                r_data="$col2"
+            fi
             local esc_type esc_name esc_data
             esc_type="$(results_escape_json "$r_type")"
             esc_name="$(results_escape_json "$r_name")"
