@@ -186,6 +186,7 @@ cli_parse_args() {
                     return 2
                 fi
 
+                CLI_MODE="${2,,}"
                 case "${2,,}" in
                     network|net)
                         CLI_NETWORK=true

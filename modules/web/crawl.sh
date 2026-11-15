@@ -157,7 +157,8 @@ module_crawl_run() {
             candidate_urls=("https://${domain_base}")
         elif [[ "$WEB_TARGET_TYPE" == "url_http" ]]; then
             candidate_urls=("http://${domain_base}")
-        else
+        elif [[ ! -d "${WEB_PARENT_DIR:-}/http-probe" ]]; then
+            # Fallback only when http-probe has not run (standalone execution)
             candidate_urls=("http://${domain_base}" "https://${domain_base}")
         fi
     fi
@@ -216,14 +217,13 @@ module_crawl_run() {
             [[ "$already_visited" == true ]] && continue
 
             visited+=("$current_url")
-            printf '%s\n' "$current_url" >> "$raw_crawled_tmp"
-            (( crawl_count += 1 ))
 
             # Fetch page content
             local html_tmp="${task_dir}/.curl_crawl_page.tmp"
-            "$curl_bin" -s -k -m 4 -L -A "$user_agent" "$current_url" > "$html_tmp" 2>/dev/null || true
+            if "$curl_bin" -s -k -m 4 -L -A "$user_agent" "$current_url" > "$html_tmp" 2>/dev/null && [[ -f "$html_tmp" && -s "$html_tmp" ]]; then
+                printf '%s\n' "$current_url" >> "$raw_crawled_tmp"
+                (( crawl_count += 1 ))
 
-            if [[ -f "$html_tmp" && -s "$html_tmp" ]]; then
                 # Extract links from href, src, action attributes
                 local raw_links_tmp="${task_dir}/.page_links.tmp"
                 grep -o -E '(href|src|action)=["'\''][^"'\''>]+["'\'']' "$html_tmp" 2>/dev/null | \

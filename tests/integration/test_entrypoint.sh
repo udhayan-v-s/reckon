@@ -529,7 +529,7 @@ fi
 SCAN_OUT="$TEST_ROOT/scan_results"
 assert_success_output \
     "CLI execution completes scheduled tasks" \
-    "RECONNAISSANCE COMPLETED" \
+    "SCAN STATUS: COMPLETED" \
     "Error:" \
     "$PROJECT_ROOT/reckon" --module host --target 192.0.2.10 --output "$SCAN_OUT"
 

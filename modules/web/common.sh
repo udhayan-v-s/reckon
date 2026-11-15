@@ -355,6 +355,24 @@ web_mod_get_target_urls() {
         fi
     fi
 
+    # 1b. Check live_endpoints.txt if live_web.txt was empty
+    local live_ep_file="${WEB_PARENT_DIR}/http-probe/live_endpoints.txt"
+    if [[ -f "$live_ep_file" && -s "$live_ep_file" ]]; then
+        local ep_url
+        local ep_found=false
+        while IFS= read -r ep_url || [[ -n "$ep_url" ]]; do
+            ep_url="${ep_url#"${ep_url%%[![:space:]]*}"}"
+            ep_url="${ep_url%"${ep_url##*[![:space:]]}"}"
+            if [[ -n "$ep_url" ]]; then
+                printf '%s\n' "$ep_url"
+                ep_found=true
+            fi
+        done < "$live_ep_file"
+        if [[ "$ep_found" == true ]]; then
+            return 0
+        fi
+    fi
+
     # 2. Check upstream open ports and services for known web services.
     local -a web_ports=()
     if [[ -f "$WEB_UPSTREAM_SERVICES_FILE" && -s "$WEB_UPSTREAM_SERVICES_FILE" ]]; then
@@ -387,7 +405,13 @@ web_mod_get_target_urls() {
         return 0
     fi
 
-    # 3. Default fallback candidates.
+    # If http-probe has already executed in this target workspace and found no live endpoints,
+    # do NOT fabricate blind candidates. Return failure so modules skip gracefully.
+    if [[ -d "${WEB_PARENT_DIR}/http-probe" ]]; then
+        return 1
+    fi
+
+    # 3. Default fallback candidates (used only when http-probe has not run, e.g. standalone module execution).
     printf 'https://%s\n' "$WEB_URL_HOST"
     printf 'http://%s\n' "$WEB_URL_HOST"
     return 0

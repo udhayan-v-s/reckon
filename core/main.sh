@@ -221,59 +221,137 @@ reckon_main() {
             exit 2
         fi
 
-        # Display Scan Session Header card
+        # Display Scan Session Header and Preparation cards
         if [[ "$CLI_QUIET" == false && "${CLI_DRY_RUN:-false}" != true ]]; then
             local mode_label="Network"
-            local scan_title="NETWORK RECONNAISSANCE"
+            local scan_scope="Network"
             if [[ "${CLI_NETWORK:-false}" == true && "${CLI_WEB:-false}" == true ]]; then
-                mode_label="Network + Web"
-                scan_title="NETWORK & WEB RECONNAISSANCE"
-            elif [[ "${CLI_WEB:-false}" == true ]]; then
+                if [[ "${CLI_MODE:-}" == "all" || "${CONFIG_EFFECTIVE_MODE:-}" == "all" ]]; then
+                    mode_label="All"
+                    scan_scope="All"
+                else
+                    mode_label="Network + Web"
+                    scan_scope="Network + Web"
+                fi
+            elif [[ "${CLI_WEB:-false}" == true || "${CONFIG_EFFECTIVE_WEB:-false}" == true ]]; then
                 mode_label="Web"
-                scan_title="WEB RECONNAISSANCE"
+                scan_scope="Web"
+            elif [[ "${CLI_NETWORK:-false}" == true || "${CONFIG_EFFECTIVE_NETWORK:-false}" == true ]]; then
+                mode_label="Network"
+                scan_scope="Network"
+            elif [[ -n "${CONFIG_EFFECTIVE_MODE:-}" ]]; then
+                mode_label="${CONFIG_EFFECTIVE_MODE^}"
+                scan_scope="$mode_label"
+            elif [[ -n "${CLI_MODE:-}" ]]; then
+                mode_label="${CLI_MODE^}"
+                scan_scope="$mode_label"
+            elif declare -p ENGINE_RESOLVED_MODULES >/dev/null 2>&1 && (( ${#ENGINE_RESOLVED_MODULES[@]} > 0 )); then
+                local has_net_mod=false has_web_mod=false
+                local m_check
+                for m_check in "${ENGINE_RESOLVED_MODULES[@]}"; do
+                    if [[ "$(engine_get_module_category "$m_check")" == "network" ]]; then
+                        has_net_mod=true
+                    elif [[ "$(engine_get_module_category "$m_check")" == "web" ]]; then
+                        has_web_mod=true
+                    fi
+                done
+                if [[ "$has_net_mod" == true && "$has_web_mod" == true ]]; then
+                    mode_label="Network + Web"
+                    scan_scope="Network + Web"
+                elif [[ "$has_web_mod" == true ]]; then
+                    mode_label="Web"
+                    scan_scope="Web"
+                elif [[ "$has_net_mod" == true ]]; then
+                    mode_label="Network"
+                    scan_scope="Network"
+                fi
             fi
 
+            local num_targets=${#TARGET_VALUE[@]}
             local target_display="${TARGET_VALUE[0]}"
-            if (( ${#TARGET_VALUE[@]} > 1 )); then
-                target_display="${TARGET_VALUE[0]} (+ $(( ${#TARGET_VALUE[@]} - 1 )) more)"
+            if (( num_targets > 1 )); then
+                target_display="${TARGET_VALUE[0]} (+ $(( num_targets - 1 )) more)"
             fi
 
             local target_type_str="Unknown"
-            if (( ${#TARGET_TYPE[@]} > 0 )); then
-                case "${TARGET_TYPE[0]}" in
-                    ipv4) target_type_str="IPv4" ;;
-                    domain) target_type_str="Domain" ;;
-                    hostname) target_type_str="Hostname" ;;
-                    url) target_type_str="URL" ;;
-                    *) target_type_str="${TARGET_TYPE[0]}" ;;
+            if (( num_targets == 1 )); then
+                case "${TARGET_TYPE[0]:-unknown}" in
+                    ipv4)                  target_type_str="IPv4 Address" ;;
+                    ipv4_cidr)             target_type_str="IPv4 CIDR" ;;
+                    ipv4_range)            target_type_str="IPv4 Range" ;;
+                    domain)                target_type_str="Domain" ;;
+                    hostname)              target_type_str="Hostname" ;;
+                    url|url_http|url_https) target_type_str="URL" ;;
+                    *)                     target_type_str="${TARGET_TYPE[0]}" ;;
                 esac
+            else
+                local first_t_type="${TARGET_TYPE[0]:-unknown}"
+                local all_same=true
+                local tt_item
+                for tt_item in "${TARGET_TYPE[@]}"; do
+                    if [[ "$tt_item" != "$first_t_type" ]]; then
+                        all_same=false
+                        break
+                    fi
+                done
+                if [[ "$all_same" == true ]]; then
+                    case "$first_t_type" in
+                        ipv4)                  target_type_str="IPv4 Address" ;;
+                        ipv4_cidr)             target_type_str="IPv4 CIDR" ;;
+                        ipv4_range)            target_type_str="IPv4 Range" ;;
+                        domain)                target_type_str="Domain" ;;
+                        hostname)              target_type_str="Hostname" ;;
+                        url|url_http|url_https) target_type_str="URL" ;;
+                        *)                     target_type_str="$first_t_type" ;;
+                    esac
+                else
+                    target_type_str="Mixed"
+                fi
             fi
 
-            local profile_str="${CONFIG_EFFECTIVE_PROFILE:-Default}"
+            local profile_str="${CONFIG_EFFECTIVE_PROFILE:-${CLI_PROFILE:-Default}}"
             [[ -z "$profile_str" ]] && profile_str="Default"
             profile_str="${profile_str^}"
 
             local start_time_str
             printf -v start_time_str '%(%Y-%m-%d %H:%M:%S)T' -1
 
-            local out_display="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"
-            [[ "$out_display" != */ ]] && out_display="${out_display}/"
+            local scan_id_date
+            printf -v scan_id_date '%(%Y%m%d)T' -1
+            RECKON_SCAN_ID="RECKON-${scan_id_date}-001"
+
+            local base_out="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"
+            local out_display="$base_out"
+            if (( num_targets == 1 )); then
+                local single_slug
+                single_slug="$(_engine_sanitize_target_dir "${TARGET_VALUE[0]}")"
+                out_display="${base_out}/${single_slug}/"
+            else
+                [[ "$out_display" != */ ]] && out_display="${out_display}/"
+            fi
 
             printf '%s\n' "================================================================================"
             if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                printf '  %s | %s\n' "$(term_bold "RECKON")" "$(term_cyan "$scan_title")"
+                printf '                         %s\n' "$(term_bold "RECKON - RECONNAISSANCE SCAN")"
             else
-                printf '  RECKON | %s\n' "$scan_title"
+                printf '                         RECKON - RECONNAISSANCE SCAN\n'
             fi
             printf '%s\n\n' "================================================================================"
-            printf '  TARGET INFORMATION\n'
-            printf '  ─────────────────────────────────────────────────────────────────────────────\n'
-            printf '  %-20s: %s\n' "Target" "$target_display"
-            printf '  %-20s: %s\n' "Target Type" "$target_type_str"
-            printf '  %-20s: %s\n' "Scan Mode" "$mode_label"
-            printf '  %-20s: %s\n' "Scan Profile" "$profile_str"
-            printf '  %-20s: %s\n' "Start Time" "$start_time_str"
-            printf '  %-20s: %s\n\n' "Output Directory" "$out_display"
+            printf 'SCAN INFORMATION\n\n'
+            printf '  %-22s: %s\n' "Scan ID" "$RECKON_SCAN_ID"
+            printf '  %-22s: %s\n' "Started" "$start_time_str"
+            printf '  %-22s: %s\n' "Scan Mode" "$mode_label"
+            printf '  %-22s: %s\n' "Scan Profile" "$profile_str"
+            printf '  %-22s: %s\n\n' "Total Targets" "$num_targets"
+            printf 'TARGET INFORMATION\n\n'
+            printf '  %-22s: %s\n' "Target" "$target_display"
+            printf '  %-22s: %s\n' "Target Type" "$target_type_str"
+            printf '  %-22s: %s\n' "Scan Scope" "$scan_scope"
+            printf '  %-22s: %s\n\n' "Output Directory" "$out_display"
+            printf '%s\n\n' "================================================================================"
+
+            # Phase 2: Preparation
+            engine_render_preparation
         fi
 
         # In dry-run mode, render the simulated execution plan and exit.
@@ -477,59 +555,80 @@ reckon_main() {
             # Header
             printf '%s\n' "================================================================================"
             if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                printf '  %s\n' "$(term_bold "SCAN SUMMARY")"
+                printf '                         %s\n' "$(term_bold "RECKON - SCAN SUMMARY")"
             else
-                printf '  SCAN SUMMARY\n'
+                printf '                         RECKON - SCAN SUMMARY\n'
             fi
             printf '%s\n\n' "================================================================================"
-            printf '  %-24s: %d\n' "Targets Processed" "${#TARGET_VALUE[@]}"
-            printf '  %-24s: %d\n' "Hosts Discovered" "$hosts_disc"
-            printf '  %-24s: %d\n' "Open Ports" "$open_ports"
-            printf '  %-24s: %d\n' "Services Identified" "$svcs_disc"
-            printf '  %-24s: %d\n\n' "Web Services" "$web_svcs"
 
-            printf '  %-24s: %d\n' "Modules Executed" "$ENGINE_COMPLETED_TASKS"
-            printf '  %-24s: %d\n' "Modules Not Applicable" "${ENGINE_NOT_APPLICABLE_TASKS:-0}"
-            printf '  %-24s: %d\n\n' "Modules Failed" "$(( ENGINE_FAILED_TASKS + ENGINE_TIMEOUT_TASKS ))"
+            local total_mods_all=$ENGINE_TOTAL_TASKS
+            if (( total_mods_all == 0 )); then
+                total_mods_all=$(( ENGINE_COMPLETED_TASKS + ENGINE_PARTIAL_TASKS + ENGINE_FAILED_TASKS + ENGINE_TIMEOUT_TASKS + ENGINE_SKIPPED_TASKS + ENGINE_NOT_APPLICABLE_TASKS + ENGINE_BLOCKED_TASKS ))
+            fi
+            local failed_all=$(( ENGINE_FAILED_TASKS + ENGINE_TIMEOUT_TASKS ))
 
-            printf '  %-24s: %s\n\n' "Duration" "$dur_str"
-            printf '%s\n' "================================================================================"
+            printf 'SCAN OVERVIEW\n\n'
+            printf '  %-28s: %s\n' "Scan ID" "${RECKON_SCAN_ID:-RECKON-$(date +%Y%m%d)-001}"
+            printf '  %-28s: %d\n' "Total Targets" "${#TARGET_VALUE[@]}"
+            printf '  %-28s: %s\n\n' "Scan Duration" "$dur_str"
 
-            # Output Files block
+            printf 'MODULE EXECUTION\n\n'
+            printf '  %-28s: %d\n' "Total Modules" "$total_mods_all"
+            printf '  %-28s: %d\n' "Completed" "$ENGINE_COMPLETED_TASKS"
+            printf '  %-28s: %d\n' "Partial" "$ENGINE_PARTIAL_TASKS"
+            printf '  %-28s: %d\n' "Failed" "$failed_all"
+            printf '  %-28s: %d\n' "Skipped" "$ENGINE_SKIPPED_TASKS"
+            printf '  %-28s: %d\n' "Not Applicable" "$ENGINE_NOT_APPLICABLE_TASKS"
+            printf '  %-28s: %d\n\n' "Blocked" "$ENGINE_BLOCKED_TASKS"
+
+            printf 'RECONNAISSANCE RESULTS\n\n'
+            printf '  %-28s: %d\n' "Total Findings" "$ENGINE_SCAN_TOTAL_FINDINGS"
+            printf '  %-28s: %d\n' "Network Findings" "$ENGINE_SCAN_NET_FINDINGS"
+            printf '  %-28s: %d\n' "Web Findings" "$ENGINE_SCAN_WEB_FINDINGS"
+            printf '  %-28s: %d\n' "Warnings" "$ENGINE_SCAN_WARNINGS"
+            printf '  %-28s: %d\n\n' "Errors" "$ENGINE_SCAN_ERRORS"
+
+            printf 'REPORTS GENERATED\n\n'
             local -a reports_to_display=("${displayed_report_files[@]}")
             if (( ${#reports_to_display[@]} > 0 )); then
-                if declare -f term_bold >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                    printf '  %s\n' "$(term_bold "OUTPUT FILES")"
-                else
-                    printf '  OUTPUT FILES\n'
-                fi
-                printf '%s\n\n' "================================================================================"
-
                 local rpt_file
                 for rpt_file in "${reports_to_display[@]}"; do
-                    local rpt_label="File    "
-                    case "$rpt_file" in
-                        *.json) rpt_label="JSON    " ;;
-                        *.txt)  rpt_label="Text    " ;;
-                        *.md)   rpt_label="Markdown" ;;
-                    esac
-                    printf '  %-8s: %s\n' "$rpt_label" "$rpt_file"
+                    local rpt_base
+                    rpt_base="$(basename "$rpt_file")"
+                    printf '  [CREATED] %s\n' "$rpt_base"
                 done
-
                 printf '\n'
+                local out_summary_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}"
+                if (( ${#TARGET_VALUE[@]} == 1 )); then
+                    local s_slug
+                    s_slug="$(_engine_sanitize_target_dir "${TARGET_VALUE[0]}")"
+                    out_summary_dir="${out_summary_dir}/${s_slug}/"
+                else
+                    [[ "$out_summary_dir" != */ ]] && out_summary_dir="${out_summary_dir}/"
+                fi
+                printf '  %-28s: %s\n\n' "Output Directory" "$out_summary_dir"
+            else
+                printf '  None (report generation disabled)\n\n'
             fi
 
-            if (( scan_status == 0 )); then
+            printf '%s\n' "================================================================================"
+            if (( scan_status == 0 && ENGINE_SCAN_WARNINGS == 0 && ENGINE_SCAN_ERRORS == 0 )); then
                 if declare -f term_green >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                    printf '  %s\n' "$(term_green "RECONNAISSANCE COMPLETED")"
+                    printf '  %s\n\n  %s\n' "$(term_green "SCAN STATUS: COMPLETED")" "$(term_green "Reconnaissance completed successfully.")"
                 else
-                    printf '  RECONNAISSANCE COMPLETED\n'
+                    printf '  SCAN STATUS: COMPLETED\n\n  Reconnaissance completed successfully.\n'
+                fi
+            elif (( ENGINE_SCAN_ERRORS > 0 || scan_status != 0 )); then
+                if declare -f term_red >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
+                    printf '  %s\n\n  %s\n' "$(term_red "SCAN STATUS: COMPLETED WITH ERRORS")" "$(term_red "Reconnaissance completed, but some modules encountered errors.")"
+                else
+                    printf '  SCAN STATUS: COMPLETED WITH ERRORS\n\n  Reconnaissance completed, but some modules encountered errors.\n'
                 fi
             else
                 if declare -f term_yellow >/dev/null 2>&1 && declare -f term_is_color_enabled >/dev/null 2>&1 && term_is_color_enabled; then
-                    printf '  %s\n' "$(term_yellow "RECONNAISSANCE COMPLETED WITH WARNINGS")"
+                    printf '  %s\n\n  %s\n' "$(term_yellow "SCAN STATUS: COMPLETED WITH WARNINGS")" "$(term_yellow "Reconnaissance completed, but some modules produced non-critical warnings.")"
                 else
-                    printf '  RECONNAISSANCE COMPLETED WITH WARNINGS\n'
+                    printf '  SCAN STATUS: COMPLETED WITH WARNINGS\n\n  Reconnaissance completed, but some modules produced non-critical warnings.\n'
                 fi
             fi
             printf '%s\n' "================================================================================"

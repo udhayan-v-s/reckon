@@ -156,7 +156,7 @@ results_parse_dns_records() {
     if [[ -f "$dns_file" && -s "$dns_file" ]]; then
         local line
         while IFS=$'\t' read -r r_type r_name r_data || [[ -n "$r_type" ]]; do
-            [[ -z "$r_type" || "$r_type" =~ ^# ]] && continue
+            [[ -z "$r_type" || "$r_type" =~ ^# || "$r_type" =~ ^\; || "$r_name" =~ ^\; ]] && continue
             local esc_type esc_name esc_data
             esc_type="$(results_escape_json "$r_type")"
             esc_name="$(results_escape_json "$r_name")"
@@ -1046,6 +1046,40 @@ results_generate_json() {
         meta_out_dir="$CONFIG_EFFECTIVE_OUTPUT_DIR"
     fi
 
+    local det_mode="${CONFIG_EFFECTIVE_MODE:-${CLI_MODE:-}}"
+    if [[ -z "$det_mode" ]]; then
+        if [[ "${CONFIG_EFFECTIVE_NETWORK:-false}" == true && "${CONFIG_EFFECTIVE_WEB:-false}" == true ]] || \
+           [[ "${CLI_NETWORK:-false}" == true && "${CLI_WEB:-false}" == true ]]; then
+            det_mode="all"
+        elif [[ "${CONFIG_EFFECTIVE_WEB:-false}" == true || "${CLI_WEB:-false}" == true ]]; then
+            det_mode="web"
+        elif [[ "${CONFIG_EFFECTIVE_NETWORK:-false}" == true || "${CLI_NETWORK:-false}" == true ]]; then
+            det_mode="network"
+        else
+            local has_w=false has_n=false
+            local w_chk n_chk
+            for w_chk in http-probe subdomain technology cms waf directory file vhost crawl endpoint http-analysis tls resources historical-urls; do
+                if find -L "$output_dir" -maxdepth 2 -type d -name "$w_chk" 2>/dev/null | grep -q .; then
+                    has_w=true
+                    break
+                fi
+            done
+            for n_chk in host dns port service os ssh ftp http https smb telnet; do
+                if find -L "$output_dir" -maxdepth 2 -type d -name "$n_chk" 2>/dev/null | grep -q .; then
+                    has_n=true
+                    break
+                fi
+            done
+            if [[ "$has_w" == true && "$has_n" == true ]]; then
+                det_mode="all"
+            elif [[ "$has_w" == true ]]; then
+                det_mode="web"
+            else
+                det_mode="network"
+            fi
+        fi
+    fi
+
     local raw_json_tmp="${out_json}.tmp"
     cat <<EOF > "$raw_json_tmp"
 {
@@ -1053,6 +1087,9 @@ results_generate_json() {
   "scan_metadata": {
     "app_name": "RECKON",
     "app_version": "${APP_VERSION:-1.0.0}",
+    "scan_id": "${RECKON_SCAN_ID:-}",
+    "scan_mode": "$det_mode",
+    "scan_profile": "${CONFIG_EFFECTIVE_PROFILE:-${CLI_PROFILE:-default}}",
     "timestamp": "$timestamp",
     "output_directory": "$meta_out_dir",
     "targets_count": $RESULTS_TOTAL_TARGETS
