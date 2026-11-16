@@ -47,10 +47,15 @@ readonly _FILE_BUILTIN_TARGETS=(
     # Web & Server Configurations
     ".htaccess"
     ".htpasswd"
+    ".hta"
     "web.config"
     "crossdomain.xml"
     "clientaccesspolicy.xml"
     # Application & CMS Configurations
+    "index"
+    "index.html"
+    "index.php"
+    "index.htm"
     "config.php"
     "config.inc.php"
     "configuration.php"
@@ -98,7 +103,7 @@ _file_classify_path() {
         *.env*|*.git*|*id_rsa*|*.htpasswd*|*.sql|*.zip|*.tar.gz)
             printf '%s\n' "CRITICAL (Credential / Secret Leak)"
             ;;
-        *.htaccess*|*config*|*settings*|*database.yml*|*.conf|*.ini|*.yml|*.yaml)
+        *.htaccess*|*.hta*|*config*|*settings*|*database.yml*|*.conf|*.ini|*.yml|*.yaml)
             printf '%s\n' "HIGH (Configuration File)"
             ;;
         *phpinfo*|*info.php*|*test.php*)
@@ -132,7 +137,7 @@ _file_resolve_wordlist() {
     fi
 
     # When fast engine ffuf is available and not in builtin-only mode,
-    # merge system common wordlist with curated sensitive files.
+    # prioritize curated sensitive targets at the top, followed by the system wordlist.
     if [[ "$use_builtin_only" != true ]]; then
         local sys_wordlist
         for sys_wordlist in \
@@ -141,9 +146,9 @@ _file_resolve_wordlist() {
             "/usr/share/wordlists/dirbuster/directory-list-2.3-small.txt"; do
             if [[ -f "$sys_wordlist" && -r "$sys_wordlist" ]]; then
                 {
-                    cat "$sys_wordlist" 2>/dev/null || true
                     printf '%s\n' "${_FILE_BUILTIN_TARGETS[@]}"
-                } | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^#' | grep -v '^$' | sort -u > "$dest_tmp"
+                    cat "$sys_wordlist" 2>/dev/null || true
+                } | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^#' | grep -v '^$' | awk '!seen[$0]++' > "$dest_tmp"
                 printf '%s\n' "$dest_tmp"
                 return 0
             fi
@@ -264,10 +269,10 @@ module_file_run() {
 
             if [[ -f "$ffuf_json" && -s "$ffuf_json" ]]; then
                 if web_mod_has_tool "jq"; then
-                    jq -r '.results[]? | "\((if (.input.FUZZ | length) > 0 then .input.FUZZ elif (.url | length) > 0 then (.url | sub("^https?://[^/]+"; "")) else "/" end))\t\(.status)\t\(.length)"' "$ffuf_json" >> "$raw_files_tmp" 2>/dev/null || true
+                    jq -r '.results[]? | "\((if (.input.FUZZ | length) > 0 then .input.FUZZ elif (.url | length) > 0 then (.url | sub("^https?://[^/]+"; "")) else "/" end))\t\(.status)\t\(.length)\t\((if (.redirectlocation | length) > 0 then .redirectlocation else "-" end))"' "$ffuf_json" >> "$raw_files_tmp" 2>/dev/null || true
                 else
                     grep -o '"url": *"[^"]*"' "$ffuf_json" | cut -d'"' -f4 | while IFS= read -r f_url; do
-                        [[ -n "$f_url" ]] && printf '%s\t200\t-\n' "$f_url" >> "$raw_files_tmp"
+                        [[ -n "$f_url" ]] && printf '%s\t200\t-\t-\n' "$f_url" >> "$raw_files_tmp"
                     done
                 fi
                 rm -f "$ffuf_json"
@@ -309,7 +314,10 @@ module_file_run() {
                             local cl
                             cl="$(grep -i '^Content-Length:' "$head_tmp" | tail -n 1 | awk '{print $2}' | tr -d '\r' || true)"
                             [[ -z "$cl" ]] && cl="-"
-                            printf '%s\t%s\t%s\n' "/${f_path}" "$status_code" "$cl" >> "$raw_files_tmp"
+                            local redir
+                            redir="$(grep -i '^Location:' "$head_tmp" | tail -n 1 | cut -d: -f2- | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/\r//' || true)"
+                            [[ -z "$redir" ]] && redir="-"
+                            printf '%s\t%s\t%s\t%s\n' "/${f_path}" "$status_code" "$cl" "$redir" >> "$raw_files_tmp"
                             ;;
                     esac
                 fi
@@ -321,14 +329,26 @@ module_file_run() {
     # Deduplicate discovered files and append classification tags.
     local -a detected_records=()
     if [[ -s "$raw_files_tmp" ]]; then
-        local path code len
-        while IFS=$'\t' read -r path code len || [[ -n "$path" ]]; do
+        local path code len redir
+        while IFS=$'\t' read -r path code len redir || [[ -n "$path" ]]; do
             [[ -z "$path" || "$path" == "/" ]] && continue
             [[ -z "$code" ]] && code="200"
             [[ -z "$len" ]] && len="-"
+            [[ -z "$redir" ]] && redir="-"
 
             # Ensure path begins with /
             [[ "$path" != /* && "$path" != http* ]] && path="/${path}"
+
+            # Filter out directory redirects:
+            # If status is 301/302/307 and redirect location ends with / or matches ${path}/, it is a directory.
+            if [[ "$code" =~ ^(301|302|307)$ ]]; then
+                if [[ "$redir" == */ || "$redir" == *"${path}/" || "$path" == */ ]]; then
+                    continue
+                fi
+            fi
+
+            # Skip paths ending with a trailing slash (directory path)
+            [[ "$path" == */ ]] && continue
 
             local classification
             classification="$(_file_classify_path "$path")"

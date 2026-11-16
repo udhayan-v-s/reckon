@@ -202,24 +202,6 @@ module_directory_run() {
     local threads_val="${CONFIG_EFFECTIVE_THREADS:-${CLI_THREADS:-40}}"
     (( threads_val < 1 )) && threads_val=40
 
-    local raw_ext_list="${CONFIG_EFFECTIVE_EXTENSIONS:-${CLI_EXTENSIONS:-}}"
-    local ffuf_ext_arg=""
-    if [[ -n "$raw_ext_list" ]]; then
-        local -a norm_exts=()
-        local ext
-        IFS=',' read -ra raw_exts <<< "$raw_ext_list"
-        for ext in "${raw_exts[@]}"; do
-            ext="${ext#"${ext%%[![:space:]]*}"}"
-            ext="${ext%"${ext##*[![:space:]]}"}"
-            [[ -z "$ext" ]] && continue
-            ext="${ext#.}"
-            [[ -n "$ext" ]] && norm_exts+=(".${ext}")
-        done
-        if (( ${#norm_exts[@]} > 0 )); then
-            ffuf_ext_arg="$(IFS=,; echo "${norm_exts[*]}")"
-        fi
-    fi
-
     if [[ "$has_ffuf" == true && ${#candidate_urls[@]} -gt 0 ]]; then
         local base_url
         for base_url in "${candidate_urls[@]}"; do
@@ -242,9 +224,6 @@ module_directory_run() {
                 -of json
                 -H "User-Agent: $user_agent"
             )
-            if [[ -n "$ffuf_ext_arg" ]]; then
-                ffuf_cmd+=(-e "$ffuf_ext_arg")
-            fi
 
             "${ffuf_cmd[@]}" < /dev/null >/dev/null 2>&1 || true
 
@@ -321,6 +300,20 @@ module_directory_run() {
 
             # Ensure path begins with /
             [[ "$path" != /* && "$path" != http* ]] && path="/${path}"
+
+            # Filter out files from directory enumeration:
+            # If path does not redirect to a trailing slash and is not a folder,
+            # exclude paths with file extensions or known sensitive file basenames.
+            if [[ "$redir" != */ && "$redir" != *"${path}/" && "$path" != */ ]]; then
+                case "$path" in
+                    *.html|*.htm|*.php|*.txt|*.js|*.css|*.xml|*.json|*.sql|*.bak|*.zip|*.tar.gz|*.pdf|*.png|*.jpg|*.ico|*.svg)
+                        continue
+                        ;;
+                    */.htaccess*|*/.htpasswd*|*/.hta*|*/.env*|*/robots.txt*|*/sitemap.xml*|*/web.config*)
+                        continue
+                        ;;
+                esac
+            fi
 
             local record="${path}"$'\t'"${code}"$'\t'"${len}"$'\t'"${redir}"
             local exists=false

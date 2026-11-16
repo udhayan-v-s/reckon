@@ -1783,20 +1783,28 @@ _engine_render_module_card() {
             table_header="$(printf '%-21s%s' "PROPERTY" "VALUE")"
             local srv="nginx"
             local code="200 OK"
+            local redir=""
             if [[ -f "$task_dir/output.txt" ]]; then
-                local s_match c_match
-                s_match="$(grep 'Server Banner' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed 's/.*: //' || true)"
-                c_match="$(grep 'Status Code' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed 's/.*: //' || true)"
+                local s_match c_match r_match
+                s_match="$(grep -i 'Server Banner' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed -e 's/.*:[[:space:]]*//' -e 's/[[:space:]]*$//' || true)"
+                c_match="$(grep -i 'Response Status' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed -e 's/.*:[[:space:]]*//' -e 's/[[:space:]]*$//' || true)"
+                [[ -z "$c_match" ]] && c_match="$(grep -i 'Status Code' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed -e 's/.*:[[:space:]]*//' -e 's/[[:space:]]*$//' || true)"
+                r_match="$(grep -i 'Redirect Location' "$task_dir/output.txt" 2>/dev/null | head -n 1 | sed -e 's/.*:[[:space:]]*//' -e 's/[[:space:]]*$//' || true)"
                 [[ -n "$s_match" ]] && srv="$s_match"
                 [[ -n "$c_match" ]] && code="$c_match"
+                [[ -n "$r_match" ]] && redir="$r_match"
             fi
-            local r1 r2 r3 r4
+            local r1 r2 r3
             printf -v r1 '%-21s%s' "Port" "80/tcp"
             printf -v r2 '%-21s%s' "Server Banner" "$srv"
             printf -v r3 '%-21s%s' "Status Code" "$code"
-            printf -v r4 '%-21s%s' "Redirect Location" "https://${target}/"
-            finding_rows+=("$r1" "$r2" "$r3" "$r4")
-            summary_text="4 findings"
+            finding_rows+=("$r1" "$r2" "$r3")
+            if [[ -n "$redir" && "$redir" != "-" ]]; then
+                local r4
+                printf -v r4 '%-21s%s' "Redirect Location" "$redir"
+                finding_rows+=("$r4")
+            fi
+            summary_text="${#finding_rows[@]} findings"
             ;;
         https)
             table_title="HTTPS SERVICE DETAILS"
