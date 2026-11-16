@@ -146,7 +146,11 @@ module_crawl_run() {
     user_agent="$(web_mod_get_user_agent)"
 
     # Resolve target domain/host
-    local domain_base="${WEB_URL_HOST:-$WEB_TARGET}"
+    local domain_base="${WEB_URL_HOST:-}"
+    if [[ -z "$domain_base" ]]; then
+        domain_base="$(_crawl_extract_host "$WEB_TARGET")"
+        [[ -z "$domain_base" ]] && domain_base="$WEB_TARGET"
+    fi
     domain_base="${domain_base%:*}"
 
     # Resolve candidate target URLs (prefers upstream live_web.txt).

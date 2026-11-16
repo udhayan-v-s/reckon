@@ -1634,17 +1634,17 @@ _engine_render_module_card() {
     case "$mod" in
         host)
             table_title="DISCOVERED HOSTS"
-            table_header="$(printf '%-17s%-12s%-12s%s' "IP ADDRESS" "STATUS" "LATENCY" "METHOD")"
+            table_header="$(printf '%-28s  %-10s  %-10s  %s' "IP ADDRESS" "STATUS" "LATENCY" "METHOD")"
             if [[ -f "$task_dir/hosts_live.txt" && -s "$task_dir/hosts_live.txt" ]]; then
                 while IFS= read -r h_line || [[ -n "$h_line" ]]; do
                     [[ -z "$h_line" ]] && continue
                     local r
-                    printf -v r '%-17s%-12s%-12s%s' "$h_line" "UP" "14.2 ms" "ICMP Echo"
+                    printf -v r '%-28s  %-10s  %-10s  %s' "$h_line" "UP" "14.2 ms" "ICMP Echo"
                     finding_rows+=("$r")
                 done < "$task_dir/hosts_live.txt"
             elif [[ -f "$task_dir/output.txt" ]] && grep -q "Host is UP" "$task_dir/output.txt" 2>/dev/null; then
                 local r
-                printf -v r '%-17s%-12s%-12s%s' "$target" "UP" "14.2 ms" "ICMP Echo"
+                printf -v r '%-28s  %-10s  %-10s  %s' "$target" "UP" "14.2 ms" "ICMP Echo"
                 finding_rows+=("$r")
             fi
             if (( ${#finding_rows[@]} == 1 )); then
@@ -1849,7 +1849,7 @@ _engine_render_module_card() {
             ;;
         http-probe)
             table_title="HTTP ENDPOINTS"
-            table_header="$(printf '%-28s%-13s%s' "URL" "STATUS" "TITLE")"
+            table_header="$(printf '%-48s  %-8s  %s' "URL" "STATUS" "TITLE")"
             local pf="$task_dir/live_web.txt"
             [[ ! -f "$pf" ]] && pf="$task_dir/live_endpoints.txt"
             if [[ -f "$pf" && -s "$pf" ]]; then
@@ -1859,7 +1859,7 @@ _engine_render_module_card() {
                     [[ "$u" == http://* ]] && st="301" && tit="301 Moved Permanently"
                     [[ "$u" == https://* ]] && st="200" && tit="Target Web Application"
                     local r
-                    printf -v r '%-28s%-13s%s' "$u" "$st" "$tit"
+                    printf -v r '%-48s  %-8s  %s' "$u" "$st" "$tit"
                     finding_rows+=("$r")
                 done < "$pf"
             fi
@@ -2100,13 +2100,13 @@ _engine_render_module_card() {
             ;;
         resources)
             table_title="DISCOVERED WEB RESOURCES"
-            table_header="$(printf '%-21s%-28s%s' "RESOURCE TYPE" "LOCATION / HASH" "DETAILS")"
+            table_header="$(printf '%-16s  %-38s  %s' "RESOURCE TYPE" "LOCATION / HASH" "DETAILS")"
             if [[ -f "$task_dir/resources.txt" && -s "$task_dir/resources.txt" ]]; then
                 while IFS=$'\t' read -r rt rl rd || [[ -n "$rt" ]]; do
                     [[ -z "$rt" ]] && continue
                     [[ "$rl" == "000" || "$rl" == "404" || "$rd" == "Not found" ]] && continue
                     local r
-                    printf -v r '%-21s%-28s%s' "${rt:-Resource}" "$rl" "${rd:--}"
+                    printf -v r '%-16s  %-38s  %s' "${rt:-Resource}" "$rl" "${rd:--}"
                     finding_rows+=("$r")
                 done < "$task_dir/resources.txt"
             fi

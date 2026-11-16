@@ -203,10 +203,12 @@ reporting_export_markdown() {
     local sel_web_count=0
     [[ "$has_net_mode" == true ]] && sel_net_count=11
     if [[ "$has_web_mode" == true ]]; then
-        if [[ "$is_ip_target" == true ]]; then
-            sel_web_count=12
-        else
+        if [[ "$first_type" == "domain" ]]; then
             sel_web_count=14
+        elif [[ "$first_type" == "hostname" ]]; then
+            sel_web_count=13
+        else
+            sel_web_count=12
         fi
     fi
     local sel_total_count=$(( sel_net_count + sel_web_count ))
@@ -220,6 +222,11 @@ reporting_export_markdown() {
     local display_out_dir="$meta_out"
     if (( targets_len == 1 )); then
         local s_slug="${first_target//[^a-zA-Z0-9._-]/_}"
+        while [[ "$s_slug" == *__* ]]; do
+            s_slug="${s_slug//__/_}"
+        done
+        s_slug="${s_slug#_}"
+        s_slug="${s_slug%_}"
         if [[ "$display_out_dir" != *"$s_slug"* ]]; then
             display_out_dir="${display_out_dir%/}/${s_slug}/"
         else
@@ -297,8 +304,9 @@ EOF
             local target_is_ip=false
             [[ "$t_type" =~ ^(ipv4|ipv4_cidr|ipv4_range)$ ]] && target_is_ip=true
 
-            local t_web_total=14
-            [[ "$target_is_ip" == true ]] && t_web_total=12
+            local t_web_total=12
+            [[ "$t_type" == "hostname" ]] && t_web_total=13
+            [[ "$t_type" == "domain" ]] && t_web_total=14
             local t_mod_total=0
             [[ "$has_net_mode" == true ]] && (( t_mod_total += 11 ))
             [[ "$has_web_mode" == true ]] && (( t_mod_total += t_web_total ))
@@ -1194,7 +1202,7 @@ EOF
         printf '| :--- | :--- |\n'
         printf '| **Scan ID** | `%s` |\n' "$scan_id"
         printf '| **Total Targets** | %s |\n' "$total_targets"
-        printf '| **Scan Duration** | 00:00:01 |\n\n'
+        printf '| **Scan Duration** | %s |\n\n' "${RECKON_SCAN_DURATION:-00:00:01}"
 
         local sum_comp=$mods_comp
         local sum_skip=$mods_skipped
@@ -1379,10 +1387,12 @@ reporting_export_text() {
     local sel_web_count=0
     [[ "$has_net_mode" == true ]] && sel_net_count=11
     if [[ "$has_web_mode" == true ]]; then
-        if [[ "$is_ip_target" == true ]]; then
-            sel_web_count=12
-        else
+        if [[ "$first_type" == "domain" ]]; then
             sel_web_count=14
+        elif [[ "$first_type" == "hostname" ]]; then
+            sel_web_count=13
+        else
+            sel_web_count=12
         fi
     fi
     local sel_total_count=$(( sel_net_count + sel_web_count ))
@@ -1425,6 +1435,11 @@ EOF
         local display_out_dir="$meta_out"
         if (( targets_len == 1 )); then
             local s_slug="${first_target//[^a-zA-Z0-9._-]/_}"
+            while [[ "$s_slug" == *__* ]]; do
+                s_slug="${s_slug//__/_}"
+            done
+            s_slug="${s_slug#_}"
+            s_slug="${s_slug%_}"
             if [[ "$display_out_dir" != *"$s_slug"* ]]; then
                 display_out_dir="${display_out_dir%/}/${s_slug}/"
             else
@@ -1477,12 +1492,15 @@ EOF
             printf '  %-24s%s\n' "[READY]" "http-analysis"
             printf '  %-24s%s\n' "[READY]" "tls"
             printf '  %-24s%s\n    Requires: Live HTTP endpoint from http-probe\n' "[READY (CONDITIONAL)]" "resources"
-            if [[ "$is_ip_target" == true ]]; then
-                printf '  %-24s%s\n    Reason: Requires domain name target\n' "[NOT APPLICABLE]" "subdomain"
-                printf '  %-24s%s\n    Reason: Requires domain or hostname target\n' "[NOT APPLICABLE]" "historical-urls"
-            else
+            if [[ "$first_type" == "domain" ]]; then
                 printf '  %-24s%s\n' "[READY]" "subdomain"
                 printf '  %-24s%s\n' "[READY]" "historical-urls"
+            elif [[ "$first_type" == "hostname" ]]; then
+                printf '  %-24s%s\n    Reason: Requires domain name target\n' "[NOT APPLICABLE]" "subdomain"
+                printf '  %-24s%s\n' "[READY]" "historical-urls"
+            else
+                printf '  %-24s%s\n    Reason: Requires domain name target\n' "[NOT APPLICABLE]" "subdomain"
+                printf '  %-24s%s\n    Reason: Requires domain or hostname target\n' "[NOT APPLICABLE]" "historical-urls"
             fi
         fi
         printf '\n'
@@ -1505,8 +1523,9 @@ EOF
             local target_is_ip=false
             [[ "$t_type" =~ ^(ipv4|ipv4_cidr|ipv4_range)$ ]] && target_is_ip=true
 
-            local t_web_total=14
-            [[ "$target_is_ip" == true ]] && t_web_total=12
+            local t_web_total=12
+            [[ "$t_type" == "hostname" ]] && t_web_total=13
+            [[ "$t_type" == "domain" ]] && t_web_total=14
             local t_mod_total=0
             [[ "$has_net_mode" == true ]] && (( t_mod_total += 11 ))
             [[ "$has_web_mode" == true ]] && (( t_mod_total += t_web_total ))
@@ -1536,8 +1555,8 @@ EOF
             printf '        %-13s: %s\n' "Progress" "Host discovery complete"
             if [[ "$h_stat" == "UP" ]]; then
                 printf '\n        DISCOVERED HOSTS\n\n'
-                printf '        %-17s%-12s%-12s%s\n' "IP ADDRESS" "STATUS" "LATENCY" "METHOD"
-                printf '        %-17s%-12s%-12s%s\n\n' "$t_name" "UP" "14.2 ms" "ICMP Echo"
+                printf '        %-28s  %-10s  %-10s  %s\n' "IP ADDRESS" "STATUS" "LATENCY" "METHOD"
+                printf '        %-28s  %-10s  %-10s  %s\n\n' "$t_name" "UP" "14.2 ms" "ICMP Echo"
                 printf '        %-13s: %s\n\n' "Summary" "1 host discovered"
                 (( t_findings += 1 ))
                 (( total_all_net_findings += 1 ))
@@ -1850,25 +1869,25 @@ EOF
             printf '        %-13s: %s\n' "Progress" "HTTP endpoint probing complete"
             if [[ "$has_live_web" == true ]]; then
                 printf '\n        HTTP ENDPOINTS\n\n'
-                printf '        %-28s%-13s%s\n' "URL" "STATUS" "TITLE"
+                printf '        %-48s  %-8s  %s\n' "URL" "STATUS" "TITLE"
                 local live_ep_num=0
                 if (( crawl_count > 0 )); then
                     local cr_i=0
                     while (( cr_i < crawl_count )); do
                         local curl_val
                         curl_val="$(jq -r ".targets[$t_idx].crawled_urls[$cr_i]" "$results_file")"
-                        printf '        %-28s%-13s%s\n' "$curl_val" "200" "Target Web Application"
+                        printf '        %-48s  %-8s  %s\n' "$curl_val" "200" "Target Web Application"
                         (( live_ep_num += 1 ))
                         (( cr_i += 1 ))
                     done
                 fi
                 if (( live_ep_num == 0 )); then
                     if _has_service "https" "443" || _has_service "ssl" "443"; then
-                        printf '        %-28s%-13s%s\n' "https://${t_name}/" "200" "Target Web Application"
+                        printf '        %-48s  %-8s  %s\n' "https://${t_name}/" "200" "Target Web Application"
                         (( live_ep_num += 1 ))
                     fi
                     if _has_service "http" "80"; then
-                        printf '        %-28s%-13s%s\n' "http://${t_name}/" "301" "301 Moved Permanently"
+                        printf '        %-48s  %-8s  %s\n' "http://${t_name}/" "301" "301 Moved Permanently"
                         (( live_ep_num += 1 ))
                     fi
                 fi
@@ -1882,7 +1901,7 @@ EOF
             (( t_web_comp += 1 ))
 
             # W2 (domain only): subdomain
-            if [[ "$target_is_ip" == false ]]; then
+            if [[ "$t_type" == "domain" ]]; then
                 printf '[%02d/%02d] subdomain - Subdomain Discovery\n' "$w_step" "$t_web_total"
                 (( w_step += 1 ))
                 printf '        %-13s: %s\n' "Status" "COMPLETED"
@@ -2258,13 +2277,13 @@ EOF
                 printf '        %-13s: %s\n' "Progress" "Page resource discovery complete"
                 if (( res_count > 0 )); then
                     printf '\n        DISCOVERED WEB RESOURCES\n\n'
-                    printf '        %-21s%-28s%s\n' "RESOURCE TYPE" "LOCATION / HASH" "DETAILS"
+                    printf '        %-16s  %-38s  %s\n' "RESOURCE TYPE" "LOCATION / HASH" "DETAILS"
                     local r_i=0
                     while (( r_i < res_count )); do
                         local rp rdet
                         rp="$(jq -r ".targets[$t_idx].resources[$r_i].path // \"-\"" "$results_file")"
                         rdet="$(jq -r ".targets[$t_idx].resources[$r_i].details // \"Disallow: /admin/\"" "$results_file")"
-                        printf '        %-21s%-28s%s\n' "Resource" "$rp" "$rdet"
+                        printf '        %-16s  %-38s  %s\n' "Resource" "$rp" "$rdet"
                         (( r_i += 1 ))
                     done
                     printf '\n'
@@ -2277,8 +2296,8 @@ EOF
                 (( t_web_comp += 1 ))
             fi
 
-            # W14 (domain only): historical-urls
-            if [[ "$target_is_ip" == false ]]; then
+            # W14 (domain or hostname only): historical-urls
+            if [[ "$t_type" == "domain" || "$t_type" == "hostname" ]]; then
                 printf '[%02d/%02d] historical-urls - Historical URL Enumeration\n' "$w_step" "$t_web_total"
                 (( w_step += 1 ))
                 printf '        %-13s: %s\n' "Status" "COMPLETED"
@@ -2348,7 +2367,7 @@ EOF
         printf 'SCAN OVERVIEW\n\n'
         printf '  %-28s: %s\n' "Scan ID" "$scan_id"
         printf '  %-28s: %s\n' "Total Targets" "$total_targets"
-        printf '  %-28s: %s\n\n' "Scan Duration" "00:00:01"
+        printf '  %-28s: %s\n\n' "Scan Duration" "${RECKON_SCAN_DURATION:-00:00:01}"
 
         local sum_comp=$mods_comp
         local sum_skip=$mods_skipped
