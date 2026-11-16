@@ -245,8 +245,10 @@ module_endpoint_run() {
                 printf '%s\n' "${BASH_REMATCH[1]}" >> "$raw_endpoints_tmp"
             fi
 
+            local ep_timeout="${CONFIG_EFFECTIVE_TIMEOUT:-8}"
+            (( ep_timeout < 8 )) && ep_timeout=8
             local page_body="${task_dir}/.curl_ep_page.tmp"
-            "$curl_bin" -s -k -m 4 -L -A "$user_agent" "$seed" > "$page_body" 2>/dev/null || true
+            "$curl_bin" -s -k -m "$ep_timeout" -L -A "$user_agent" "$seed" > "$page_body" 2>/dev/null || true
 
             if [[ -f "$page_body" && -s "$page_body" ]]; then
                 # Pattern 1: REST API and versioned paths
@@ -277,7 +279,7 @@ module_endpoint_run() {
 
                     if [[ "$js_url" =~ ^https?:// ]]; then
                         local js_body="${task_dir}/.curl_js_bundle.tmp"
-                        "$curl_bin" -s -k -m 4 -L -A "$user_agent" "$js_url" > "$js_body" 2>/dev/null || true
+                        "$curl_bin" -s -k -m "$ep_timeout" -L -A "$user_agent" "$js_url" > "$js_body" 2>/dev/null || true
                         if [[ -f "$js_body" && -s "$js_body" ]]; then
                             grep -o -E '["'\'']/(api|v[0-9]+|graphql|auth|admin|oauth)/[^"'\''>[:space:]]+["'\'']' "$js_body" 2>/dev/null >> "$raw_endpoints_tmp" || true
                             grep -o -E 'fetch\(["'\''][^"'\'']+["'\'']' "$js_body" 2>/dev/null | sed -E 's/^fetch\(["'\'']//; s/["'\'']$//' >> "$raw_endpoints_tmp" || true

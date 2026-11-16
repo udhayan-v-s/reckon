@@ -457,10 +457,10 @@ reckon_main() {
                     TARGET_TYPE=("${_saved_tt[t_idx]:-}")
 
                     local cur_dur=$(( SECONDS - scan_start_time ))
-                    local cur_h=$(( cur_dur / 3600 ))
-                    local cur_m=$(( (cur_dur % 3600) / 60 ))
-                    local cur_s=$(( cur_dur % 60 ))
-                    printf -v RECKON_SCAN_DURATION '%02d:%02d:%02d' "$cur_h" "$cur_m" "$cur_s"
+                    local ch=$(( cur_dur / 3600 ))
+                    local cm=$(( (cur_dur % 3600) / 60 ))
+                    local cs=$(( cur_dur % 60 ))
+                    printf -v RECKON_SCAN_DURATION '%02d:%02d:%02d' "$ch" "$cm" "$cs"
                     export RECKON_SCAN_DURATION
 
                     if reporting_generate "$stage_dir" "$format_str"; then

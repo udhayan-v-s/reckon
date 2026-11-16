@@ -146,11 +146,7 @@ module_crawl_run() {
     user_agent="$(web_mod_get_user_agent)"
 
     # Resolve target domain/host
-    local domain_base="${WEB_URL_HOST:-}"
-    if [[ -z "$domain_base" ]]; then
-        domain_base="$(_crawl_extract_host "$WEB_TARGET")"
-        [[ -z "$domain_base" ]] && domain_base="$WEB_TARGET"
-    fi
+    local domain_base="${WEB_URL_HOST:-$WEB_TARGET}"
     domain_base="${domain_base%:*}"
 
     # Resolve candidate target URLs (prefers upstream live_web.txt).
@@ -224,7 +220,9 @@ module_crawl_run() {
 
             # Fetch page content
             local html_tmp="${task_dir}/.curl_crawl_page.tmp"
-            if "$curl_bin" -s -k -m 4 -L -A "$user_agent" "$current_url" > "$html_tmp" 2>/dev/null && [[ -f "$html_tmp" && -s "$html_tmp" ]]; then
+            local crawl_timeout="${CONFIG_EFFECTIVE_TIMEOUT:-8}"
+            (( crawl_timeout < 8 )) && crawl_timeout=8
+            if "$curl_bin" -s -k -m "$crawl_timeout" -L -A "$user_agent" "$current_url" > "$html_tmp" 2>/dev/null && [[ -f "$html_tmp" && -s "$html_tmp" ]]; then
                 printf '%s\n' "$current_url" >> "$raw_crawled_tmp"
                 (( crawl_count += 1 ))
 
