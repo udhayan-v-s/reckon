@@ -431,6 +431,15 @@ cli_validate_scan_selection() {
 
     fi
 
+    # Require scan mode or module selection when a target is specified.
+    if [[ -n "$CLI_TARGET" || -n "$CLI_TARGETS_FILE" ]]; then
+        if [[ "$CLI_NETWORK" == false && "$CLI_WEB" == false && ${#CLI_MODULES[@]} -eq 0 && -z "$CLI_CONFIG" ]]; then
+            printf 'Error: A scan mode or module selection is required when a target is specified.\n' >&2
+            printf 'Use --mode (network, web, all), -n, -w, or --modules to specify a scan mode.\n' >&2
+            return 2
+        fi
+    fi
+
     return 0
 }
 
@@ -869,7 +878,7 @@ Target Specification:
     -T, --targets-file FILE     Specify a file containing line-delimited targets.
 
 Scan Selection & Modules:
-    -m, --mode MODE             Reconnaissance mode: 'network', 'web', or 'all' (default: network).
+    -m, --mode MODE             Reconnaissance mode: 'network', 'web', or 'all'.
     -n, --network               Shorthand for '--mode network'.
     -w, --web                   Shorthand for '--mode web'.
     -M, --module, --modules MOD Comma-separated list of specific modules to run.

@@ -577,8 +577,11 @@ target_prepare() {
     elif declare -p CONFIG_EFFECTIVE_MODULES >/dev/null 2>&1 && (( ${#CONFIG_EFFECTIVE_MODULES[@]} > 0 )); then
         scan_mode="both"
     else
-        # No scan mode selected — nothing to prepare. Not an error;
-        # the CLI layer already requires a target when scanning.
+        # If target was provided via config or CLI, but no scan mode or modules:
+        if [[ -n "$CONFIG_EFFECTIVE_TARGET" || -n "$CONFIG_EFFECTIVE_TARGETS_FILE" ]]; then
+            TARGET_ERROR="A scan mode or module selection is required when a target is specified. Use --mode, -n, -w, or --modules."
+            return 1
+        fi
         TARGET_PREPARED=true
         return 0
     fi

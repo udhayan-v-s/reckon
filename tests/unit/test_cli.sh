@@ -607,6 +607,30 @@ test_cli_scan_and_module_validation() {
         fail "Targets file satisfies scan selection"
     fi
 
+    # Test 3b: Target without scan mode or modules is rejected.
+    cli_init
+    CLI_TARGET="10.10.10.10"
+
+    if output="$(cli_validate_scan_selection 2>&1)"; then status=0; else status=$?; fi
+
+    if [[ "$status" -eq 2 &&
+          "$output" == *"A scan mode or module selection is required"* ]]; then
+
+        cli_init
+        CLI_TARGETS_FILE="targets.txt"
+
+        if output="$(cli_validate_scan_selection 2>&1)"; then status=0; else status=$?; fi
+
+        if [[ "$status" -eq 2 &&
+              "$output" == *"A scan mode or module selection is required"* ]]; then
+            pass "Target without scan mode or module is rejected"
+        else
+            fail "Target without scan mode or module is rejected"
+        fi
+    else
+        fail "Target without scan mode or module is rejected"
+    fi
+
     # Test 4: Custom modules conflict with network and web modes.
     cli_init
     CLI_MODULES=(host)

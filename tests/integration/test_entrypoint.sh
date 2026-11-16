@@ -308,6 +308,13 @@ assert_failure \
     "A target is required" \
     "$PROJECT_ROOT/reckon" --network
 
+# Test 15b: Target without a scan mode or modules is rejected.
+assert_failure \
+    "Reject target specification without scan mode or modules" \
+    2 \
+    "A scan mode or module selection is required" \
+    "$PROJECT_ROOT/reckon" --target 192.0.2.10
+
 # Test 16: Valid JSON configuration is loaded through the CLI.
 VALID_CONFIG="$TEST_ROOT/valid-config.json"
 
