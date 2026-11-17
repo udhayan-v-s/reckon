@@ -597,12 +597,21 @@ results_parse_http_analysis() {
                     local acac="$col2"
                     local risk="$col3"
                     local status="${col4:--}"
+
+                    # Defensive normalization for collapsed tabs or shifted columns:
+                    if [[ -z "$risk" && ("$col1" == "LOW" || "$col1" == "MEDIUM" || "$col1" == "HIGH" || "$col1" == "CRITICAL" || "$col1" == "NONE") ]]; then
+                        risk="$col1"
+                        status="${col2:--}"
+                        acao="-"
+                        acac="-"
+                    fi
+
                     local esc_acao esc_status
                     esc_acao="$(results_escape_json "$acao")"
                     esc_status="$(results_escape_json "$status")"
                     local refl="false"
                     local cred="false"
-                    [[ -n "$acao" && "$acao" != "-" ]] && refl="true"
+                    [[ -n "$acao" && "$acao" != "-" && "$acao" != "(none)" ]] && refl="true"
                     [[ "$acac" == "true" ]] && cred="true"
                     cors_json="{\"origin_reflected\": $refl, \"credentials_allowed\": $cred, \"risk\": \"$risk\", \"allow_origin\": \"$esc_acao\", \"status\": \"$esc_status\"}"
                     if [[ "$risk" == "HIGH" || "$risk" == "MEDIUM" ]]; then

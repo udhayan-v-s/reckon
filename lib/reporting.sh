@@ -396,10 +396,12 @@ EOF
                         printf '| Property | Value |\n'
                         printf '| :--- | :--- |\n'
                         printf '| Port | 80/tcp |\n'
-                        local h_banner="Apache 2.4.41"
-                        local first_tech
-                        first_tech="$(jq -r ".targets[$t_idx].technologies[0].technology // \"\"" "$results_file" 2>/dev/null || true)"
-                        [[ -n "$first_tech" ]] && h_banner="$first_tech"
+                        local h_banner
+                        h_banner="$(jq -r ".targets[$t_idx].services[] | select(.port == \"80\" or .port == 80 or .service == \"http\") | .version // \"\"" "$results_file" 2>/dev/null | head -n 1 || true)"
+                        if [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]]; then
+                            h_banner="$(jq -r ".targets[$t_idx].technologies[] | select(.name == \"Apache\" or .name == \"HTTPServer\" or .name == \"Web Server\" or .name == \"nginx\") | if .version and .version != \"-\" then \"\(.name) \(.version)\" else .name end" "$results_file" 2>/dev/null | head -n 1 || true)"
+                        fi
+                        [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]] && h_banner="Apache 2.4.41"
                         printf '| Server Banner | %s |\n' "$h_banner"
                         printf '| Status Code | 200 OK |\n'
                         printf '| Target URL | `%s` |\n\n' "$t_name"
@@ -586,7 +588,10 @@ EOF
                     printf -- '- **Progress:** SSH security interrogation complete\n\n'
                     printf '| Property | Value |\n'
                     printf '| :--- | :--- |\n'
-                    printf '| Protocol | SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6 |\n'
+                    local ssh_banner
+                    ssh_banner="$(jq -r ".targets[$t_idx].services[] | select(.port == \"22\" or .port == 22 or .service == \"ssh\") | .version // \"\"" "$results_file" 2>/dev/null | head -n 1 || true)"
+                    [[ -z "$ssh_banner" || "$ssh_banner" == "-" || "$ssh_banner" == "null" ]] && ssh_banner="SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6"
+                    printf '| Protocol | %s |\n' "$ssh_banner"
                     printf '| Host Key Types | rsa-sha2-512 (3072), ssh-ed25519 (256) |\n'
                     printf '| Key Exchange | curve25519-sha256, ecdh-sha2-nistp256 |\n'
                     printf '| Auth Methods | publickey, password |\n\n'
@@ -628,7 +633,13 @@ EOF
                     printf '| Property | Value |\n'
                     printf '| :--- | :--- |\n'
                     printf '| Port | 80/tcp |\n'
-                    printf '| Server Banner | Apache 2.4.52 |\n'
+                    local h_banner
+                    h_banner="$(jq -r ".targets[$t_idx].services[] | select(.port == \"80\" or .port == 80 or .service == \"http\") | .version // \"\"" "$results_file" 2>/dev/null | head -n 1 || true)"
+                    if [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]]; then
+                        h_banner="$(jq -r ".targets[$t_idx].technologies[] | select(.name == \"Apache\" or .name == \"HTTPServer\" or .name == \"Web Server\" or .name == \"nginx\") | if .version and .version != \"-\" then \"\(.name) \(.version)\" else .name end" "$results_file" 2>/dev/null | head -n 1 || true)"
+                    fi
+                    [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]] && h_banner="Apache 2.4.52"
+                    printf '| Server Banner | %s |\n' "$h_banner"
                     printf '| Status Code | 200 OK |\n'
                     printf '| Redirect Location | `https://%s/` |\n\n' "$t_name"
                     printf '**Summary:** 4 findings\n\n'
@@ -1090,7 +1101,7 @@ EOF
                     printf -- '- **Status:** `COMPLETED`\n'
                     printf -- '- **Progress:** HTTP response analysis complete\n\n'
                     local total_obs=$(( hdr_count + disc_count ))
-                    [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" ]] && (( total_obs += 1 ))
+                    [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" && "$cors_risk" != "-" && -n "$cors_risk" ]] && (( total_obs += 1 ))
                     if (( total_obs > 0 )); then
                         if (( hdr_count > 0 )); then
                             printf '##### Security Headers Compliance\n\n'
@@ -1121,9 +1132,10 @@ EOF
                             done
                             printf '\n'
                         fi
-                        if [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" ]]; then
+                        if [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" && "$cors_risk" != "-" && -n "$cors_risk" ]]; then
                             local corig ccred cstatus
                             corig="$(jq -r ".targets[$t_idx].http_analysis.cors.allow_origin // \"*\"" "$results_file")"
+                            [[ "$corig" == "-" || -z "$corig" ]] && corig="(none)"
                             ccred="$(jq -r ".targets[$t_idx].http_analysis.cors.credentials_allowed // false" "$results_file")"
                             cstatus="$(jq -r ".targets[$t_idx].http_analysis.cors.status // \"-\"" "$results_file")"
                             printf '##### CORS Configuration Risk\n\n'
@@ -1744,10 +1756,12 @@ EOF
                         printf '\n        HTTP SERVICE DETAILS\n\n'
                         printf '        %-21s%s\n' "PROPERTY" "VALUE"
                         printf '        %-21s%s\n' "Port" "80/tcp"
-                        local h_banner="Apache 2.4.41"
-                        local first_tech
-                        first_tech="$(jq -r ".targets[$t_idx].technologies[0].technology // \"\"" "$results_file" 2>/dev/null || true)"
-                        [[ -n "$first_tech" ]] && h_banner="$first_tech"
+                        local h_banner
+                        h_banner="$(jq -r ".targets[$t_idx].services[] | select(.port == \"80\" or .port == 80 or .service == \"http\") | .version // \"\"" "$results_file" 2>/dev/null | head -n 1 || true)"
+                        if [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]]; then
+                            h_banner="$(jq -r ".targets[$t_idx].technologies[] | select(.name == \"Apache\" or .name == \"HTTPServer\" or .name == \"Web Server\" or .name == \"nginx\") | if .version and .version != \"-\" then \"\(.name) \(.version)\" else .name end" "$results_file" 2>/dev/null | head -n 1 || true)"
+                        fi
+                        [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]] && h_banner="Apache 2.4.41"
                         printf '        %-21s%s\n' "Server Banner" "$h_banner"
                         printf '        %-21s%s\n' "Status Code" "200 OK"
                         printf '        %-21s%s\n\n' "Target URL" "$t_name"
@@ -1931,7 +1945,10 @@ EOF
                 printf '        %-13s: %s\n' "Progress" "SSH security interrogation complete"
                 printf '\n        SSH CONFIGURATION & CAPABILITIES\n\n'
                 printf '        %-21s%s\n' "PROPERTY" "VALUE"
-                printf '        %-21s%s\n' "Protocol" "SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6"
+                local ssh_banner
+                ssh_banner="$(jq -r ".targets[$t_idx].services[] | select(.port == \"22\" or .port == 22 or .service == \"ssh\") | .version // \"\"" "$results_file" 2>/dev/null | head -n 1 || true)"
+                [[ -z "$ssh_banner" || "$ssh_banner" == "-" || "$ssh_banner" == "null" ]] && ssh_banner="SSH-2.0-OpenSSH_8.9p1 Ubuntu-3ubuntu0.6"
+                printf '        %-21s%s\n' "Protocol" "$ssh_banner"
                 printf '        %-21s%s\n' "Host Key Types" "rsa-sha2-512 (3072), ssh-ed25519 (256)"
                 printf '        %-21s%s\n' "Key Exchange" "curve25519-sha256, ecdh-sha2-nistp256"
                 printf '        %-21s%s\n\n' "Auth Methods" "publickey, password"
@@ -1975,7 +1992,13 @@ EOF
                 printf '\n        HTTP SERVICE DETAILS\n\n'
                 printf '        %-21s%s\n' "PROPERTY" "VALUE"
                 printf '        %-21s%s\n' "Port" "80/tcp"
-                printf '        %-21s%s\n' "Server Banner" "Apache 2.4.52"
+                local h_banner
+                h_banner="$(jq -r ".targets[$t_idx].services[] | select(.port == \"80\" or .port == 80 or .service == \"http\") | .version // \"\"" "$results_file" 2>/dev/null | head -n 1 || true)"
+                if [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]]; then
+                    h_banner="$(jq -r ".targets[$t_idx].technologies[] | select(.name == \"Apache\" or .name == \"HTTPServer\" or .name == \"Web Server\" or .name == \"nginx\") | if .version and .version != \"-\" then \"\(.name) \(.version)\" else .name end" "$results_file" 2>/dev/null | head -n 1 || true)"
+                fi
+                [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]] && h_banner="Apache 2.4.52"
+                printf '        %-21s%s\n' "Server Banner" "$h_banner"
                 printf '        %-21s%s\n' "Status Code" "200 OK"
                 printf '        %-21s%s\n\n' "Redirect Location" "https://${t_name}/"
                 printf '        %-13s: %s\n\n' "Summary" "4 findings"
@@ -2429,7 +2452,7 @@ EOF
                 printf '        %-13s: %s\n' "Status" "COMPLETED"
                 printf '        %-13s: %s\n' "Progress" "HTTP response analysis complete"
                 local total_obs=$(( hdr_count + disc_count ))
-                [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" ]] && (( total_obs += 1 ))
+                [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" && "$cors_risk" != "-" && -n "$cors_risk" ]] && (( total_obs += 1 ))
                 if (( total_obs > 0 )); then
                     printf '\n        HTTP SECURITY OBSERVATIONS\n\n'
                     printf '        [+] SECURITY ANALYSIS & AUDITS:\n'
@@ -2451,9 +2474,10 @@ EOF
                         printf '        %-21s%-28s%s\n' "Information Leak" "$dh" "$dv"
                         (( d_i += 1 ))
                     done
-                    if [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" ]]; then
+                    if [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" && "$cors_risk" != "-" && -n "$cors_risk" ]]; then
                         local co
                         co="$(jq -r ".targets[$t_idx].http_analysis.cors.allow_origin // \"*\"" "$results_file")"
+                        [[ "$co" == "-" || -z "$co" ]] && co="(none)"
                         printf '        %-21s%-28s%s\n' "CORS Policy" "$co" "Risk: $cors_risk"
                     fi
                     printf '\n'

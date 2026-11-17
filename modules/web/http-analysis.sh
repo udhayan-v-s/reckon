@@ -166,7 +166,7 @@ module_http_analysis_run() {
         cors_status="Permissive: Access-Control-Allow-Origin wildcard (*)"
         cors_risk="LOW"
     fi
-    printf 'CORS\t%s\t%s\t%s\t%s\n' "$acao" "$acac" "$cors_risk" "$cors_status" >> "$analysis_file"
+    printf 'CORS\t%s\t%s\t%s\t%s\n' "${acao:--}" "${acac:--}" "$cors_risk" "$cors_status" >> "$analysis_file"
 
     # 3. HTTP Methods & Verb Tampering
     local options_tmp="${task_dir}/.options.tmp"
