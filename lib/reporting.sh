@@ -641,7 +641,7 @@ EOF
                     [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]] && h_banner="Apache 2.4.52"
                     printf '| Server Banner | %s |\n' "$h_banner"
                     printf '| Status Code | 200 OK |\n'
-                    printf '| Redirect Location | `https://%s/` |\n\n' "$t_name"
+                    printf '| Target URL | `http://%s/` |\n\n' "$t_name"
                     printf '**Summary:** 4 findings\n\n'
                     (( t_net_comp += 1 ))
                     (( t_findings += 4 ))
@@ -1173,7 +1173,7 @@ EOF
                 if [[ "$target_is_url" == false || "$t_type" == "url_https" ]]; then
                     printf '#### [%02d/%02d] tls — SSL/TLS Analysis\n\n' "$w_step" "$t_web_total"
                 (( w_step += 1 ))
-                if [[ "$has_live_web" != true ]] && ! _has_service "https" "443" && ! _has_service "ssl" "443"; then
+                if ! _has_service "https" "443" && ! _has_service "ssl" "443" && [[ -z "$cert_subj" ]] && (( tls_proto_count == 0 )); then
                     printf -- '- **Status:** `SKIPPED`\n'
                     printf -- '- **Reason:** No live TLS endpoint identified\n\n'
                     (( t_web_skip += 1 ))
@@ -2000,7 +2000,7 @@ EOF
                 [[ -z "$h_banner" || "$h_banner" == "-" || "$h_banner" == "null" ]] && h_banner="Apache 2.4.52"
                 printf '        %-21s%s\n' "Server Banner" "$h_banner"
                 printf '        %-21s%s\n' "Status Code" "200 OK"
-                printf '        %-21s%s\n\n' "Redirect Location" "https://${t_name}/"
+                printf '        %-21s%s\n\n' "Target URL" "http://${t_name}/"
                 printf '        %-13s: %s\n\n' "Summary" "4 findings"
                 (( t_net_comp += 1 ))
                 (( t_findings += 4 ))
@@ -2494,7 +2494,7 @@ EOF
             if [[ "$target_is_url" == false || "$t_type" == "url_https" ]]; then
                 printf '[%02d/%02d] tls - SSL/TLS Analysis\n' "$w_step" "$t_web_total"
             (( w_step += 1 ))
-            if [[ "$has_live_web" != true ]] && ! _has_service "https" "443" && ! _has_service "ssl" "443"; then
+            if ! _has_service "https" "443" && ! _has_service "ssl" "443" && [[ -z "$cert_subj" ]] && (( tls_proto_count == 0 )); then
                 printf '        %-13s: %s\n' "Status" "SKIPPED"
                 printf '        %-13s: %s\n\n' "Reason" "No live TLS endpoint identified"
                 (( t_web_skip += 1 ))
