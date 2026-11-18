@@ -424,7 +424,7 @@ reckon_main() {
                 local t_slug=""
                 t_slug="$(_engine_sanitize_target_dir "$t_val")"
                 local final_t_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug}"
-                rm -rf "$final_t_dir" && mkdir -p "$final_t_dir" && chmod 0750 "$final_t_dir"
+                mkdir -p "$final_t_dir" && chmod 0750 "$final_t_dir" 2>/dev/null || true
             done
         else
             local format_str=""
@@ -435,16 +435,30 @@ reckon_main() {
                 format_str="JSON,MD,TXT"
             fi
 
+            local scan_timestamp=""
+            printf -v scan_timestamp '%(%Y-%m-%d_%H-%M-%S)T' -1
+            [[ -z "$scan_timestamp" || "$scan_timestamp" == "-1" ]] && scan_timestamp="$(date +"%Y-%m-%d_%H-%M-%S")"
+
             local t_idx
             for t_idx in "${!TARGET_VALUE[@]}"; do
                 local t_val="${TARGET_VALUE[t_idx]}"
                 local t_slug=""
                 t_slug="$(_engine_sanitize_target_dir "$t_val")"
                 local raw_t_dir="${temp_work_dir}/${t_slug}"
-                local final_t_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug}"
+                local target_base_dir="${CONFIG_EFFECTIVE_OUTPUT_DIR:-results}/${t_slug}"
+                local scan_t_dir="${target_base_dir}/${scan_timestamp}"
 
-                # Clean prior run folder for target to prevent mixing old and new scan reports
-                rm -rf "$final_t_dir" && mkdir -p "$final_t_dir" && chmod 0750 "$final_t_dir"
+                if [[ -d "$scan_t_dir" ]]; then
+                    local seq=1
+                    while [[ -d "${scan_t_dir}_${seq}" ]]; do
+                        (( seq += 1 ))
+                    done
+                    scan_timestamp="${scan_timestamp}_${seq}"
+                    scan_t_dir="${target_base_dir}/${scan_timestamp}"
+                fi
+
+                # Ensure base target directory and timestamped scan directory exist
+                mkdir -p "$scan_t_dir" && chmod 0750 "$target_base_dir" "$scan_t_dir" 2>/dev/null || true
 
                 if [[ -d "$raw_t_dir" ]]; then
                     local stage_dir="${temp_work_dir}/_stage_${t_slug}"
@@ -469,14 +483,28 @@ reckon_main() {
                             local f_name
                             f_name="$(basename "$gen_f")"
                             if [[ -f "$gen_f" ]]; then
-                                mv -f "$gen_f" "${final_t_dir}/${f_name}"
-                                chmod 0640 "${final_t_dir}/${f_name}" 2>/dev/null || true
-                                displayed_report_files+=("${final_t_dir}/${f_name}")
+                                mv -f "$gen_f" "${scan_t_dir}/${f_name}"
+                                chmod 0640 "${scan_t_dir}/${f_name}" 2>/dev/null || true
+                                displayed_report_files+=("${scan_t_dir}/${f_name}")
                                 if [[ -n "$CONFIG_EFFECTIVE_LOG_FILE" ]]; then
-                                    _log_write_file "INFO" "Generated assessment report: ${final_t_dir}/${f_name}"
+                                    _log_write_file "INFO" "Generated assessment report: ${scan_t_dir}/${f_name}"
                                 fi
                             fi
                         done
+
+                        # Maintain 'latest' symlink and update convenience links at target base level
+                        (
+                            cd "$target_base_dir" || exit 0
+                            ln -sfn "$scan_timestamp" "latest" 2>/dev/null || true
+                            local rpt_item
+                            for rpt_item in results.json report.md report.txt report.html; do
+                                if [[ -f "${scan_timestamp}/${rpt_item}" ]]; then
+                                    rm -f "$rpt_item" 2>/dev/null || true
+                                    ln -f "${scan_timestamp}/${rpt_item}" "$rpt_item" 2>/dev/null || cp -p "${scan_timestamp}/${rpt_item}" "$rpt_item" 2>/dev/null || true
+                                    chmod 0640 "$rpt_item" 2>/dev/null || true
+                                fi
+                            done
+                        )
                     else
                         report_gen_failed=true
                         local rep_err="${REPORTING_ERROR:-unknown error}"
