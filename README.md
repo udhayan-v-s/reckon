@@ -1,73 +1,184 @@
 # RECKON
 
-**A modular Bash-based network and web reconnaissance toolkit.**
+**A modular, automated network and web reconnaissance toolkit built entirely in Bash.**
 
-RECKON is a command-line reconnaissance toolkit designed to automate network and web information gathering by orchestrating established cybersecurity tools through a modular Bash architecture.
+RECKON orchestrates standard security tools into a streamlined, automated workflow. It scans network hosts and web applications, detects services and vulnerabilities, normalizes findings into unified JSON, and exports structured reports (Markdown, Text, JSON) with automatic historical scan tracking.
 
-The project aims to simplify reconnaissance workflows, organize findings, and generate structured scan reports through a unified interface.
+---
 
-## Objectives
+## Features
 
-- Automate common network and web reconnaissance tasks.
-- Integrate widely used security tools into a unified workflow.
-- Provide modular and reusable Bash components.
-- Normalize and organize reconnaissance findings.
-- Generate structured reports in multiple formats.
+- **Automated Multi-Phase Recon:** Seamlessly orchestrates network scanning, service interrogation, and web application enumeration.
+- **Intelligent Target Handling:** Accepts IPv4 addresses, CIDR ranges, hostnames, domain names, URLs (`http://` / `https://`), or target files.
+- **25 Dedicated Modules:** Modular architecture allowing full scans or targeted module execution.
+- **Multi-Format Reporting:** Generates clean **Markdown (`report.md`)**, **Plain Text (`report.txt`)**, and schema-validated **JSON (`results.json`)**.
+- **Historical Scan Tracking:** Every scan run is preserved in its own timestamped subfolder with a `latest` link—subsequent scans never overwrite prior results.
+- **Graceful Fallbacks:** Built-in tool fallback engines (e.g., curl-based fuzzing and fingerprinting if specialized tools like `ffuf` or `whatweb` are missing).
+- **Zero Configuration Required:** Ready to run out of the box with sensible defaults and support for custom wordlists, thread controls, and JSON config files.
 
-## Planned Features
+---
 
-### Network Reconnaissance
-- Host discovery
-- DNS reconnaissance
-- Port scanning
-- Service and OS detection
-- SSH, FTP, HTTP, HTTPS, SMB and Telnet enumeration
+## Reconnaissance Modules
 
-### Web Reconnaissance
-- HTTP/HTTPS analysis
-- Technology, CMS and WAF fingerprinting
-- Subdomain enumeration
-- Directory and file enumeration
-- Virtual host enumeration
-- Web crawling and endpoint discovery
-- SSL/TLS analysis
-- Historical URL discovery
+### Network Reconnaissance (11 Modules)
+- `host` — Host discovery & ICMP sweeps (`fping`, `nmap`, ping)
+- `dns` — Forward, reverse, and record queries (`dig`, `dnsx`)
+- `port` — Port scanning with customizable port ranges (`nmap`, `nc`)
+- `service` — Service version detection & banner grabbing (`nmap -sV`)
+- `os` — Operating system fingerprinting (`nmap -O`)
+- `ssh` — SSH configuration, key exchange, and auth methods (`ssh-audit`, `ssh-keyscan`)
+- `ftp` — Anonymous login testing, banner inspection, and TLS checks
+- `http` — HTTP web server enumeration and banner interrogation
+- `https` — HTTPS service inspection and SSL protocol verification
+- `smb` — SMB share enumeration, guest access, and dialect detection (`smbclient`, `enum4linux-ng`)
+- `telnet` — Telnet service identification and cleartext authentication warnings
 
-## Architecture
+### Web Reconnaissance (14 Modules)
+- `http-probe` — HTTP live host detection, status codes, and title extraction (`httpx`, `curl`)
+- `technology` — Web stack & framework fingerprinting (`whatweb`, `curl`)
+- `cms` — Content Management System identification (WordPress, Joomla, Drupal)
+- `waf` — Web Application Firewall detection (`wafw00f`)
+- `directory` — Directory discovery fuzzing (`ffuf`, `curl`)
+- `file` — Sensitive file & credential discovery (`.htpasswd`, `.env`, backups)
+- `vhost` — Virtual host fuzzing with Host header manipulation (`ffuf`)
+- `crawl` — Web link crawling and endpoint spidering (`katana`, regex)
+- `endpoint` — API and route extraction (REST, GraphQL)
+- `http-analysis` — Security header audit, CORS policy testing, and HTTP method permissions
+- `tls` — Certificate inspection, SANs, and cipher evaluation (`openssl`, `testssl.sh`)
+- `resources` — Standard metadata discovery (`robots.txt`, `sitemap.xml`, `.well-known`)
+- `subdomain` — Passive & active subdomain resolution (`subfinder`, `dnsx`)
+- `historical-urls` — Wayback Machine and archive URL discovery (`gau`)
 
-RECKON follows a modular, function-oriented Bash architecture with separate components for:
+---
 
-- CLI and input validation
-- Scan planning and execution
-- Network and web modules
-- Shared utilities and dependency management
-- Result processing and normalization
-- Logging and report generation
+## Installation & Prerequisites
 
-## Technology Stack
+RECKON is portable and requires **Bash (>= 4.4)** and standard Linux tools.
 
-- **Language:** Bash
-- **Platform:** Linux
-- **Static Analysis:** ShellCheck
-- **Version Control:** Git
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/username/reckon.git
+   cd reckon
+   chmod +x reckon
+   ```
 
-External reconnaissance tools and their dependencies will be documented as their integrations are implemented.
-
-## Project Status
-
-**Development in progress — v1.0**
-
-The project is currently in its foundation and core CLI development stages. Planned features will be implemented and tested incrementally.
+2. **Verify dependencies:**
+   ```bash
+   ./reckon --check-deps
+   ```
+   
+---
 
 ## Usage
 
-CLI commands and usage examples will be documented as the core interface becomes available.
+```bash
+reckon -t <TARGET> [OPTIONS]
+reckon -T <TARGETS_FILE> [OPTIONS]
+```
+
+### Common Examples
+
+1. **Network Reconnaissance on a Host:**
+   ```bash
+   ./reckon -t 192.168.1.10 -n
+   ```
+
+2. **Web Reconnaissance against a URL:**
+   ```bash
+   ./reckon -t http://10.10.10.50 -w
+   ```
+
+3. **Full Combined Recon (Network + Web):**
+   ```bash
+   ./reckon -t example.com --mode all
+   ```
+
+4. **Web Scan with Custom File Extensions & Wordlist:**
+   ```bash
+   ./reckon -t http://example.com -w -e php,html,txt,bak --wordlist /usr/share/wordlists/dirb/common.txt
+   ```
+
+5. **Scanning Custom Ports or All Ports:**
+   ```bash
+   ./reckon -t 192.168.1.50 -n -p 21,22,80,443,8080
+   ./reckon -t 192.168.1.50 -n -p-
+   ```
+
+6. **Running Specific Modules Only:**
+   ```bash
+   ./reckon -t 192.168.1.1 -M host,port,service,http-analysis
+   ```
+
+7. **Full Scan Excluding Noisy Modules:**
+   ```bash
+   ./reckon -t example.com --mode all -x smb,telnet,waf
+   ```
+
+8. **Multi-Target File Scan:**
+   ```bash
+   ./reckon -T targets.txt --mode all -o scans/
+   ```
+
+9. **Dry-Run (Simulate Execution Plan):**
+   ```bash
+   ./reckon -t 192.168.1.1 --mode all --dry-run
+   ```
+
+---
+
+## Results & Directory Structure
+
+Results are organized by target under `results/<target>/`. Each scan run is preserved in a timestamped folder:
+
+```text
+results/
+└── 10.48.158.113/
+    ├── 2026-11-18_22-49-32/           # Historical Scan Run 1
+    │   ├── report.md
+    │   ├── report.txt
+    │   └── results.json
+    ├── 2026-11-18_23-15-29/           # Historical Scan Run 2
+    │   ├── report.md
+    │   ├── report.txt
+    │   └── results.json
+    ├── latest -> 2026-11-18_23-15-29/ # Symlink to newest run
+    ├── report.md                      # Direct access to latest report
+    ├── report.txt
+    └── results.json
+```
+
+---
+
+## Configuration File (Optional)
+
+You can specify default scan settings via a JSON configuration file (`--config config.json`):
+
+```json
+{
+  "general": {
+    "output_dir": "results",
+    "threads": 20,
+    "timeout": 300,
+    "rate_limit": 10
+  },
+  "scanning": {
+    "profile": "default",
+    "ports": "top-100",
+    "wordlist": "/usr/share/wordlists/dirb/common.txt"
+  },
+  "reporting": {
+    "formats": ["JSON", "MD", "TXT"]
+  }
+}
+```
+
+---
 
 ## Responsible Use
 
-RECKON is intended for authorized security assessments, educational labs, and controlled testing environments.
+RECKON is designed for authorized security assessments, penetration testing, bug bounty testing within scope, and educational research. Always obtain written authorization before scanning target networks or systems.
 
-Users are responsible for obtaining appropriate authorization before scanning or enumerating any systems, networks, or web applications.
+---
 
 ## License
 
