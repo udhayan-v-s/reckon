@@ -57,7 +57,7 @@ RECKON is portable and requires **Bash (>= 4.4)** and standard Linux tools.
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/username/reckon.git
+   git clone https://github.com/udhayan-v-s/reckon.git
    cd reckon
    chmod +x reckon
    ```
