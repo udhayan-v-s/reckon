@@ -340,6 +340,108 @@
       font-weight: 600;
     }
 
+    /* Raw ASCII Text Report Viewer */
+    .txt-viewer {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .txt-toolbar {
+      background: #21262d;
+      border-bottom: 1px solid var(--card-border);
+      padding: 10px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .txt-toolbar-title {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-light);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .txt-search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 4px 10px;
+    }
+
+    .txt-search-input {
+      background: transparent;
+      border: none;
+      color: var(--text-light);
+      font-size: 0.82rem;
+      font-family: var(--font-sans);
+      outline: none;
+      width: 180px;
+    }
+
+    .txt-search-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .txt-stats {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .txt-content-wrap {
+      overflow-x: auto;
+      max-height: 700px;
+      background: var(--code-bg);
+    }
+
+    .txt-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+
+    .txt-line-num {
+      width: 48px;
+      min-width: 48px;
+      padding: 1px 12px 1px 8px;
+      text-align: right;
+      color: var(--text-muted);
+      user-select: none;
+      background: #12161d;
+      border-right: 1px solid var(--card-border);
+      font-size: 0.76rem;
+      vertical-align: top;
+    }
+
+    .txt-line-code {
+      padding: 1px 14px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #e6edf3;
+    }
+
+    .txt-line-highlight {
+      background: rgba(88, 166, 255, 0.15);
+    }
+
+    .txt-line-highlight .txt-line-code {
+      color: #79c0ff;
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -600,11 +702,7 @@
         } else if (format === 'md') {
           this.parseMarkdown(content);
         } else {
-          if (typeof this.parseText === 'function') {
-            this.parseText(content);
-          } else if (container) {
-            container.innerHTML = `<div class="status-banner">Loaded <strong>${this.state.fileName}</strong> (Raw ASCII text format detected). Parser will activate in Commit #5.</div>`;
-          }
+          this.parseText(content);
         }
       },
 
@@ -952,6 +1050,95 @@
         }
 
         return output.join('\n');
+      },
+
+      parseText(rawText) {
+        const container = document.getElementById("viewContainer");
+        if (!container) return;
+
+        try {
+          const lines = (rawText || '').replace(/\r\n/g, '\n').split('\n');
+          const totalLines = lines.length;
+
+          // Render raw text viewer shell with search toolbar and virtualized-style line numbers
+          container.innerHTML = `
+            <div class="txt-viewer">
+              <div class="txt-toolbar">
+                <div class="txt-toolbar-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                    <line x1="9" y1="20" x2="15" y2="20"></line>
+                    <line x1="12" y1="4" x2="12" y2="20"></line>
+                  </svg>
+                  Raw ASCII Scan Log
+                </div>
+                <div style="display: flex; align-items: center; gap: 14px;">
+                  <div class="txt-stats" id="txtMatchStats">${totalLines} lines</div>
+                  <div class="txt-search-box">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="txtSearchInput" class="txt-search-input" placeholder="Search log lines...">
+                  </div>
+                </div>
+              </div>
+              <div class="txt-content-wrap">
+                <table class="txt-table" id="txtLogTable">
+                  <tbody>
+                    ${lines.map((line, idx) => `
+                      <tr id="log-row-${idx + 1}">
+                        <td class="txt-line-num">${idx + 1}</td>
+                        <td class="txt-line-code">${this.escapeHtml(line) || '&nbsp;'}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+
+          // Bind search filter for raw text viewer
+          const searchInput = document.getElementById("txtSearchInput");
+          const matchStats = document.getElementById("txtMatchStats");
+          if (searchInput) {
+            searchInput.addEventListener("input", (e) => {
+              const query = (e.target.value || '').toLowerCase();
+              let matchedCount = 0;
+              const rows = document.querySelectorAll("#txtLogTable tbody tr");
+
+              rows.forEach((row, i) => {
+                const text = lines[i].toLowerCase();
+                if (!query) {
+                  row.style.display = "";
+                  row.classList.remove("txt-line-highlight");
+                  matchedCount++;
+                } else if (text.includes(query)) {
+                  row.style.display = "";
+                  row.classList.add("txt-line-highlight");
+                  matchedCount++;
+                } else {
+                  row.style.display = "none";
+                  row.classList.remove("txt-line-highlight");
+                }
+              });
+
+              if (matchStats) {
+                matchStats.textContent = query 
+                  ? `${matchedCount} / ${totalLines} matches` 
+                  : `${totalLines} lines`;
+              }
+            });
+          }
+        } catch (err) {
+          console.error("Raw text parser error:", err);
+          container.innerHTML = `
+            <div class="status-banner" style="border-color: var(--danger); background: var(--danger-dim);">
+              <span style="color: var(--danger); font-weight: 600;">Error displaying ASCII log:</span>
+              <span>${err.message || 'Error'}</span>
+            </div>
+          `;
+        }
       },
 
       reset() {
