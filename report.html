@@ -165,6 +165,96 @@
       gap: 24px;
     }
 
+    /* Dropzone Upload Area */
+    .upload-card {
+      background: var(--card-bg);
+      border: 2px dashed var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 48px 24px;
+      text-align: center;
+      transition: all 0.2s ease-in-out;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .upload-card:hover, .upload-card.dragover {
+      border-color: var(--accent);
+      background: var(--card-hover);
+      box-shadow: 0 0 20px var(--accent-dim);
+    }
+
+    .upload-icon {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 16px;
+      color: var(--accent);
+    }
+
+    .upload-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--text-light);
+      margin-bottom: 8px;
+    }
+
+    .upload-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+
+    .upload-formats {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .format-pill {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: #21262d;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+    }
+
+    .file-input-hidden {
+      display: none;
+    }
+
+    /* Active File Info Bar */
+    .file-loaded-bar {
+      display: none;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 14px 20px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .file-loaded-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .file-loaded-name {
+      font-weight: 600;
+      color: var(--text-light);
+      font-family: var(--font-mono);
+      font-size: 0.95rem;
+    }
+
+    .file-loaded-meta {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -219,7 +309,58 @@
     </header>
 
     <main id="app">
-      <!-- Upload area and dashboard components will mount here -->
+      <!-- Active File Loaded Bar (visible once a report is loaded) -->
+      <section id="fileLoadedBar" class="file-loaded-bar">
+        <div class="file-loaded-info">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          <div>
+            <div id="loadedFileName" class="file-loaded-name">scan_result.json</div>
+            <div id="loadedFileMeta" class="file-loaded-meta">Size: 12 KB • Format: JSON</div>
+          </div>
+        </div>
+        <button id="btnResetFile" class="btn" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 4 1 10 7 10"></polyline>
+            <polyline points="23 20 23 14 17 14"></polyline>
+            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+          </svg>
+          Load Another File
+        </button>
+      </section>
+
+      <!-- Upload Zone -->
+      <section id="uploadZone" class="upload-card">
+        <input type="file" id="fileInput" class="file-input-hidden" accept=".json,.md,.txt">
+        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <div class="upload-title">Drop your RECKON scan report here</div>
+        <div class="upload-subtitle">Drag and drop any RECKON scan output file, or click browse below</div>
+        <div class="upload-formats">
+          <span class="format-pill">results.json</span>
+          <span class="format-pill">report.md</span>
+          <span class="format-pill">report.txt</span>
+        </div>
+        <button id="btnBrowse" class="btn btn-primary" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          Browse Files
+        </button>
+      </section>
+
+      <!-- Visualizer Views Container (Populated in subsequent commits) -->
+      <div id="viewContainer"></div>
     </main>
 
     <footer>
@@ -232,15 +373,184 @@
     const ReckonApp = {
       state: {
         rawSource: null,
-        format: null,
+        fileName: '',
+        fileSize: 0,
+        format: null, // 'json' | 'md' | 'txt'
         scanMetadata: null,
         summary: null,
         targets: [],
         activeTargetIndex: 0,
         viewMode: 'dashboard'
       },
+
       init() {
-        console.log("RECKON Web Viewer initialized.");
+        this.bindUploadEvents();
+      },
+
+      bindUploadEvents() {
+        const dropZone = document.getElementById("uploadZone");
+        const fileInput = document.getElementById("fileInput");
+        const btnBrowse = document.getElementById("btnBrowse");
+        const btnReset = document.getElementById("btnResetFile");
+
+        if (!dropZone || !fileInput) return;
+
+        // Browse button clicks
+        btnBrowse.addEventListener("click", (e) => {
+          e.stopPropagation();
+          fileInput.click();
+        });
+
+        // Click anywhere on upload zone triggers file picker
+        dropZone.addEventListener("click", () => {
+          fileInput.click();
+        });
+
+        // File selection from dialog
+        fileInput.addEventListener("change", (e) => {
+          if (e.target.files && e.target.files.length > 0) {
+            this.handleFile(e.target.files[0]);
+          }
+        });
+
+        // Drag and drop event listeners
+        ['dragenter', 'dragover'].forEach(eventName => {
+          dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('dragover');
+          }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+          dropZone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('dragover');
+          }, false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+          const dt = e.dataTransfer;
+          if (dt && dt.files && dt.files.length > 0) {
+            this.handleFile(dt.files[0]);
+          }
+        });
+
+        // Reset file button
+        if (btnReset) {
+          btnReset.addEventListener("click", () => {
+            this.reset();
+          });
+        }
+      },
+
+      formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+      },
+
+      detectFormat(fileName, content) {
+        const lower = fileName.toLowerCase();
+        if (lower.endsWith('.json')) return 'json';
+        if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'md';
+        if (lower.endsWith('.txt')) return 'txt';
+
+        // Content sniffing fallback
+        const trimmed = content.trim();
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          return 'json';
+        }
+        if (trimmed.startsWith('#') || trimmed.includes('\n## ')) {
+          return 'md';
+        }
+        return 'txt';
+      },
+
+      handleFile(file) {
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const content = e.target.result;
+          const detectedFormat = this.detectFormat(file.name, content);
+
+          this.state.rawSource = content;
+          this.state.fileName = file.name;
+          this.state.fileSize = file.size;
+          this.state.format = detectedFormat;
+
+          this.updateFileBar(file.name, file.size, detectedFormat);
+          this.routeToParser(detectedFormat, content);
+        };
+
+        reader.onerror = () => {
+          alert('Failed to read file. Please ensure it is a valid text/json file.');
+        };
+
+        reader.readAsText(file);
+      },
+
+      updateFileBar(name, size, format) {
+        const uploadZone = document.getElementById("uploadZone");
+        const fileLoadedBar = document.getElementById("fileLoadedBar");
+        const nameEl = document.getElementById("loadedFileName");
+        const metaEl = document.getElementById("loadedFileMeta");
+
+        if (uploadZone) uploadZone.style.display = "none";
+        if (fileLoadedBar) {
+          fileLoadedBar.style.display = "flex";
+          if (nameEl) nameEl.textContent = name;
+          if (metaEl) {
+            metaEl.textContent = `Size: ${this.formatFileSize(size)} • Format: ${format.toUpperCase()}`;
+          }
+        }
+      },
+
+      routeToParser(format, content) {
+        const container = document.getElementById("viewContainer");
+        // Handlers will be implemented in subsequent commits
+        if (format === 'json') {
+          if (typeof this.parseJson === 'function') {
+            this.parseJson(content);
+          } else if (container) {
+            container.innerHTML = `<div class="status-banner">Loaded <strong>${this.state.fileName}</strong> (JSON format detected). Parser will activate in Commit #3.</div>`;
+          }
+        } else if (format === 'md') {
+          if (typeof this.parseMarkdown === 'function') {
+            this.parseMarkdown(content);
+          } else if (container) {
+            container.innerHTML = `<div class="status-banner">Loaded <strong>${this.state.fileName}</strong> (Markdown format detected). Parser will activate in Commit #4.</div>`;
+          }
+        } else {
+          if (typeof this.parseText === 'function') {
+            this.parseText(content);
+          } else if (container) {
+            container.innerHTML = `<div class="status-banner">Loaded <strong>${this.state.fileName}</strong> (Raw ASCII text format detected). Parser will activate in Commit #5.</div>`;
+          }
+        }
+      },
+
+      reset() {
+        this.state.rawSource = null;
+        this.state.fileName = '';
+        this.state.fileSize = 0;
+        this.state.format = null;
+        this.state.scanMetadata = null;
+        this.state.summary = null;
+        this.state.targets = [];
+
+        const fileInput = document.getElementById("fileInput");
+        if (fileInput) fileInput.value = '';
+
+        const uploadZone = document.getElementById("uploadZone");
+        const fileLoadedBar = document.getElementById("fileLoadedBar");
+        const container = document.getElementById("viewContainer");
+
+        if (uploadZone) uploadZone.style.display = "block";
+        if (fileLoadedBar) fileLoadedBar.style.display = "none";
+        if (container) container.innerHTML = '';
       }
     };
 
