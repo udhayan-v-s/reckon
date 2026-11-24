@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="RECKON — Modular Network & Web Reconnaissance Toolkit Visualizer">
+  <title>RECKON — Reconnaissance Web Viewer</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --card-border: #30363d;
+      --card-hover: #1c2128;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --text-light: #f0f6fc;
+      --accent: #58a6ff;
+      --accent-dim: rgba(88, 166, 255, 0.15);
+      --success: #3fb950;
+      --success-dim: rgba(63, 185, 80, 0.15);
+      --warning: #d29922;
+      --warning-dim: rgba(210, 153, 34, 0.15);
+      --danger: #f85149;
+      --danger-dim: rgba(248, 81, 73, 0.15);
+      --code-bg: #0b0e14;
+      --border-radius: 8px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 24px 20px;
+      flex: 1;
+    }
+
+    /* Header */
+    header {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 24px 28px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .ascii-logo {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.15;
+      color: var(--accent);
+      white-space: pre;
+      user-select: none;
+    }
+
+    .header-info h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-light);
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-info p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .badge-accent {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+    }
+
+    .badge-success {
+      background: var(--success-dim);
+      color: var(--success);
+      border: 1px solid rgba(63, 185, 80, 0.3);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--text-light);
+      background: #21262d;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+      text-decoration: none;
+    }
+
+    .btn:hover {
+      background: #30363d;
+      border-color: #8b949e;
+    }
+
+    .btn-primary {
+      background: #238636;
+      border-color: rgba(240, 246, 252, 0.1);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background: #2ea043;
+      border-color: rgba(240, 246, 252, 0.2);
+    }
+
+    /* Main Content Container */
+    #app {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Status Banner */
+    .status-banner {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 16px 20px;
+      font-size: 0.9rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 20px 0;
+      margin-top: 40px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-brand">
+        <pre class="ascii-logo">
+    ____  ______________________  _   __
+   / __ \/ ____/ ____/ //_/ __ \/ | / /
+  / /_/ / __/ / /   / ,< / / / /  |/ / 
+ / _, _/ /___/ /___/ /| / /_/ / /|  /  
+/_/ |_/_____/\____/_/ |_\____/_/ |_/   </pre>
+        <div class="header-info">
+          <h1>RECKON <span class="badge badge-accent">v1.0.0</span></h1>
+          <p>Reconnaissance Assessment Web Viewer &amp; Report Visualizer</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="badge badge-success">Offline Ready</span>
+      </div>
+    </header>
+
+    <main id="app">
+      <!-- Upload area and dashboard components will mount here -->
+    </main>
+
+    <footer>
+      <p>RECKON — Modular Network &amp; Web Reconnaissance Toolkit. Designed for authorized security assessments.</p>
+    </footer>
+  </div>
+
+  <script>
+    // Global State Container for RECKON Webview
+    const ReckonApp = {
+      state: {
+        rawSource: null,
+        format: null,
+        scanMetadata: null,
+        summary: null,
+        targets: [],
+        activeTargetIndex: 0,
+        viewMode: 'dashboard'
+      },
+      init() {
+        console.log("RECKON Web Viewer initialized.");
+      }
+    };
+
+    window.addEventListener("DOMContentLoaded", () => {
+      ReckonApp.init();
+    });
+  </script>
+</body>
+</html>
