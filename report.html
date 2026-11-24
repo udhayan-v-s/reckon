@@ -255,6 +255,91 @@
       color: var(--text-muted);
     }
 
+    /* Markdown Document Styles */
+    .md-article {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 32px 36px;
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    .md-article h1, .md-article h2, .md-article h3, .md-article h4 {
+      color: var(--text-light);
+      margin-top: 24px;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .md-article h1 { font-size: 1.6rem; border-bottom: 1px solid var(--card-border); padding-bottom: 8px; }
+    .md-article h2 { font-size: 1.3rem; border-bottom: 1px solid var(--card-border); padding-bottom: 6px; }
+    .md-article h3 { font-size: 1.1rem; }
+    .md-article h4 { font-size: 0.95rem; }
+
+    .md-article p { margin-bottom: 14px; }
+    .md-article hr { border: 0; border-top: 1px solid var(--card-border); margin: 24px 0; }
+    .md-article ul, .md-article ol { margin-left: 24px; margin-bottom: 14px; }
+    .md-article li { margin-bottom: 6px; }
+
+    .md-article table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+      font-size: 0.88rem;
+    }
+
+    .md-article th, .md-article td {
+      border: 1px solid var(--card-border);
+      padding: 8px 14px;
+      text-align: left;
+    }
+
+    .md-article th {
+      background: #21262d;
+      color: var(--text-light);
+      font-weight: 600;
+    }
+
+    .md-article tr:nth-child(even) td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .md-article pre {
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 14px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.84rem;
+      margin: 14px 0;
+      color: #e6edf3;
+    }
+
+    .md-article code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      padding: 2px 6px;
+      background: rgba(110, 118, 129, 0.2);
+      border-radius: 4px;
+      color: var(--accent);
+    }
+
+    .md-article pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+
+    .md-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -513,11 +598,7 @@
         if (format === 'json') {
           this.parseJson(content);
         } else if (format === 'md') {
-          if (typeof this.parseMarkdown === 'function') {
-            this.parseMarkdown(content);
-          } else if (container) {
-            container.innerHTML = `<div class="status-banner">Loaded <strong>${this.state.fileName}</strong> (Markdown format detected). Parser will activate in Commit #4.</div>`;
-          }
+          this.parseMarkdown(content);
         } else {
           if (typeof this.parseText === 'function') {
             this.parseText(content);
@@ -666,6 +747,211 @@
           summary,
           targets
         };
+      },
+
+      escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      },
+
+      parseMarkdown(rawMd) {
+        const container = document.getElementById("viewContainer");
+        if (!container) return;
+
+        try {
+          // Tokenize and render markdown to styled HTML
+          const renderedHtml = this.markdownToHtml(rawMd);
+          container.innerHTML = `<article class="md-article">${renderedHtml}</article>`;
+        } catch (err) {
+          console.error("Markdown rendering error:", err);
+          container.innerHTML = `
+            <div class="status-banner" style="border-color: var(--danger); background: var(--danger-dim);">
+              <span style="color: var(--danger); font-weight: 600;">Error rendering Markdown:</span>
+              <span>${err.message || 'Syntax error'}</span>
+            </div>
+          `;
+        }
+      },
+
+      markdownToHtml(md) {
+        if (!md) return '';
+        const lines = md.replace(/\r\n/g, '\n').split('\n');
+        const output = [];
+        let inCodeBlock = false;
+        let codeBlockLang = '';
+        let codeBlockLines = [];
+        let inTable = false;
+        let tableHeaderDone = false;
+        let inList = false;
+        let listType = 'ul'; // 'ul' | 'ol'
+
+        const closeListIfOpen = () => {
+          if (inList) {
+            output.push(listType === 'ul' ? '</ul>' : '</ol>');
+            inList = false;
+          }
+        };
+
+        const closeTableIfOpen = () => {
+          if (inTable) {
+            output.push('</tbody></table>');
+            inTable = false;
+            tableHeaderDone = false;
+          }
+        };
+
+        const formatInline = (text) => {
+          let s = this.escapeHtml(text);
+          // Inline code `code`
+          s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+          // Bold **text** or __text__
+          s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+          s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+          // Italic *text* or _text_
+          s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+          s = s.replace(/_([^_]+)_/g, '<em>$1</em>');
+          // Links [text](url)
+          s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+          return s;
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+
+          // 1. Code block fence (```)
+          if (line.trim().startsWith('```')) {
+            closeListIfOpen();
+            closeTableIfOpen();
+            if (inCodeBlock) {
+              const codeContent = this.escapeHtml(codeBlockLines.join('\n'));
+              output.push(`<pre><code>${codeContent}</code></pre>`);
+              codeBlockLines = [];
+              inCodeBlock = false;
+            } else {
+              inCodeBlock = true;
+              codeBlockLang = line.trim().slice(3).trim();
+              codeBlockLines = [];
+            }
+            continue;
+          }
+
+          if (inCodeBlock) {
+            codeBlockLines.push(line);
+            continue;
+          }
+
+          const trimmed = line.trim();
+
+          // 2. Empty line
+          if (!trimmed) {
+            closeListIfOpen();
+            closeTableIfOpen();
+            continue;
+          }
+
+          // 3. Horizontal Rule
+          if (/^(\*{3,}|-{3,}|_{3,})$/.test(trimmed)) {
+            closeListIfOpen();
+            closeTableIfOpen();
+            output.push('<hr>');
+            continue;
+          }
+
+          // 4. Headers
+          if (trimmed.startsWith('#')) {
+            closeListIfOpen();
+            closeTableIfOpen();
+            if (trimmed.startsWith('#### ')) {
+              output.push(`<h4>${formatInline(trimmed.slice(5))}</h4>`);
+            } else if (trimmed.startsWith('### ')) {
+              output.push(`<h3>${formatInline(trimmed.slice(4))}</h3>`);
+            } else if (trimmed.startsWith('## ')) {
+              output.push(`<h2>${formatInline(trimmed.slice(3))}</h2>`);
+            } else if (trimmed.startsWith('# ')) {
+              output.push(`<h1>${formatInline(trimmed.slice(2))}</h1>`);
+            }
+            continue;
+          }
+
+          // 5. Table rows (| col1 | col2 |)
+          if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+            closeListIfOpen();
+            const cells = trimmed
+              .slice(1, -1)
+              .split('|')
+              .map(c => c.trim());
+
+            // Check if this line is separator (| :--- | :--- |)
+            const isSeparator = cells.every(c => /^:?-+:?$/.test(c));
+
+            if (isSeparator) {
+              tableHeaderDone = true;
+              continue;
+            }
+
+            if (!inTable) {
+              inTable = true;
+              tableHeaderDone = false;
+              output.push('<table><thead><tr>');
+              cells.forEach(c => output.push(`<th>${formatInline(c)}</th>`));
+              output.push('</tr></thead><tbody>');
+            } else {
+              output.push('<tr>');
+              cells.forEach(c => output.push(`<td>${formatInline(c)}</td>`));
+              output.push('</tr>');
+            }
+            continue;
+          } else {
+            closeTableIfOpen();
+          }
+
+          // 6. Unordered Lists (- item or * item)
+          if (/^[-*]\s+/.test(trimmed)) {
+            closeTableIfOpen();
+            if (!inList || listType !== 'ul') {
+              closeListIfOpen();
+              inList = true;
+              listType = 'ul';
+              output.push('<ul>');
+            }
+            const itemText = trimmed.replace(/^[-*]\s+/, '');
+            output.push(`<li>${formatInline(itemText)}</li>`);
+            continue;
+          }
+
+          // 7. Ordered Lists (1. item)
+          if (/^\d+\.\s+/.test(trimmed)) {
+            closeTableIfOpen();
+            if (!inList || listType !== 'ol') {
+              closeListIfOpen();
+              inList = true;
+              listType = 'ol';
+              output.push('<ol>');
+            }
+            const itemText = trimmed.replace(/^\d+\.\s+/, '');
+            output.push(`<li>${formatInline(itemText)}</li>`);
+            continue;
+          }
+
+          // 8. Normal paragraph
+          closeListIfOpen();
+          output.push(`<p>${formatInline(trimmed)}</p>`);
+        }
+
+        closeListIfOpen();
+        closeTableIfOpen();
+
+        if (inCodeBlock) {
+          const codeContent = this.escapeHtml(codeBlockLines.join('\n'));
+          output.push(`<pre><code>${codeContent}</code></pre>`);
+        }
+
+        return output.join('\n');
       },
 
       reset() {
