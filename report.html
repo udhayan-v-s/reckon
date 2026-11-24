@@ -510,13 +510,8 @@
 
       routeToParser(format, content) {
         const container = document.getElementById("viewContainer");
-        // Handlers will be implemented in subsequent commits
         if (format === 'json') {
-          if (typeof this.parseJson === 'function') {
-            this.parseJson(content);
-          } else if (container) {
-            container.innerHTML = `<div class="status-banner">Loaded <strong>${this.state.fileName}</strong> (JSON format detected). Parser will activate in Commit #3.</div>`;
-          }
+          this.parseJson(content);
         } else if (format === 'md') {
           if (typeof this.parseMarkdown === 'function') {
             this.parseMarkdown(content);
@@ -530,6 +525,147 @@
             container.innerHTML = `<div class="status-banner">Loaded <strong>${this.state.fileName}</strong> (Raw ASCII text format detected). Parser will activate in Commit #5.</div>`;
           }
         }
+      },
+
+      parseJson(rawJson) {
+        const container = document.getElementById("viewContainer");
+        try {
+          const data = typeof rawJson === 'string' ? JSON.parse(rawJson) : rawJson;
+          const normalized = this.normalizeJsonSchema(data);
+
+          this.state.scanMetadata = normalized.scan_metadata;
+          this.state.summary = normalized.summary;
+          this.state.targets = normalized.targets;
+          this.state.activeTargetIndex = 0;
+
+          if (typeof this.renderDashboard === 'function') {
+            this.renderDashboard();
+          } else if (container) {
+            container.innerHTML = `
+              <div class="status-banner" style="display: block;">
+                <div style="font-size: 1rem; font-weight: 600; color: var(--success); margin-bottom: 6px;">
+                  ✓ JSON Parsed &amp; Validated Successfully
+                </div>
+                <div style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6;">
+                  Scan ID: <strong style="color: var(--text-light);">${normalized.scan_metadata.scan_id || 'N/A'}</strong> | 
+                  Mode: <strong style="color: var(--text-light);">${normalized.scan_metadata.scan_mode || 'N/A'}</strong> | 
+                  Targets: <strong style="color: var(--text-light);">${normalized.targets.length}</strong> | 
+                  Hosts Up: <strong style="color: var(--text-light);">${normalized.summary.total_hosts_up}</strong>
+                </div>
+              </div>
+            `;
+          }
+        } catch (err) {
+          console.error("JSON parse error:", err);
+          if (container) {
+            container.innerHTML = `
+              <div class="status-banner" style="border-color: var(--danger); background: var(--danger-dim);">
+                <span style="color: var(--danger); font-weight: 600;">Error parsing JSON:</span>
+                <span>${err.message || 'Invalid JSON syntax'}</span>
+              </div>
+            `;
+          }
+        }
+      },
+
+      normalizeJsonSchema(data) {
+        // Robust normalization ensuring fallback defaults for missing fields
+        const scan_metadata = Object.assign({
+          app_name: 'RECKON',
+          app_version: '1.0.0',
+          scan_id: 'UNKNOWN',
+          scan_mode: 'standard',
+          scan_profile: 'default',
+          timestamp: new Date().toISOString(),
+          output_directory: 'results',
+          targets_count: 0,
+          wordlist: ''
+        }, data.scan_metadata || {});
+
+        const summary = Object.assign({
+          total_targets: 0,
+          total_hosts_up: 0,
+          total_open_ports: 0,
+          total_subdomains: 0,
+          total_web_endpoints: 0,
+          total_security_issues: 0,
+          modules_completed: 0,
+          modules_not_applicable: 0,
+          modules_failed: 0,
+          modules_skipped: 0
+        }, data.summary || {});
+
+        let rawTargets = [];
+        if (Array.isArray(data.targets)) {
+          rawTargets = data.targets;
+        } else if (data.target) {
+          // If a single target object was supplied at top level
+          rawTargets = [data];
+        }
+
+        const targets = rawTargets.map((t, idx) => {
+          return {
+            target: t.target || `Target-${idx + 1}`,
+            target_type: t.target_type || 'ipv4',
+            host_status: t.host_status || 'UNKNOWN',
+            dns: Array.isArray(t.dns) ? t.dns : [],
+            ports: Array.isArray(t.ports) ? t.ports : [],
+            services: Array.isArray(t.services) ? t.services : [],
+            os: Array.isArray(t.os) ? t.os : [],
+            subdomains: Array.isArray(t.subdomains) ? t.subdomains : [],
+            technologies: Array.isArray(t.technologies) ? t.technologies : [],
+            cms: Array.isArray(t.cms) ? t.cms : [],
+            waf: Array.isArray(t.waf) ? t.waf : [],
+            directories: Array.isArray(t.directories) ? t.directories : [],
+            files: Array.isArray(t.files) ? t.files : [],
+            vhosts: Array.isArray(t.vhosts) ? t.vhosts : [],
+            crawled_urls: Array.isArray(t.crawled_urls) ? t.crawled_urls : [],
+            endpoints: Array.isArray(t.endpoints) ? t.endpoints : [],
+            http_analysis: Object.assign({
+              headers: [],
+              disclosures: [],
+              cors: {
+                origin_reflected: false,
+                credentials_allowed: false,
+                risk: 'NONE'
+              },
+              methods: []
+            }, t.http_analysis || {}),
+            tls: Object.assign({
+              protocols: [],
+              certificate: {}
+            }, t.tls || {}),
+            resources: Array.isArray(t.resources) ? t.resources : [],
+            historical_urls: Array.isArray(t.historical_urls) ? t.historical_urls : []
+          };
+        });
+
+        // Recalculate summary stats if they were 0 or missing
+        if (!summary.total_targets) summary.total_targets = targets.length;
+        if (!summary.total_hosts_up) {
+          summary.total_hosts_up = targets.filter(t => t.host_status === 'UP').length;
+        }
+        if (!summary.total_open_ports) {
+          summary.total_open_ports = targets.reduce((acc, t) => acc + (t.ports ? t.ports.length : 0), 0);
+        }
+        if (!summary.total_subdomains) {
+          summary.total_subdomains = targets.reduce((acc, t) => acc + (t.subdomains ? t.subdomains.length : 0), 0);
+        }
+        if (!summary.total_web_endpoints) {
+          summary.total_web_endpoints = targets.reduce((acc, t) => {
+            const dirs = t.directories ? t.directories.length : 0;
+            const files = t.files ? t.files.length : 0;
+            const eps = t.endpoints ? t.endpoints.length : 0;
+            return acc + dirs + files + eps;
+          }, 0);
+        }
+
+        return {
+          schema_version: data.schema_version || '1.0',
+          scan_metadata,
+          summary,
+          targets
+        };
       },
 
       reset() {
