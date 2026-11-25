@@ -442,6 +442,130 @@
       color: #79c0ff;
     }
 
+    /* Dashboard Layout */
+    .dashboard-view {
+      display: flex;
+      flex-direction: column;
+      gap: 22px;
+    }
+
+    /* Scan Metadata Banner */
+    .scan-meta-banner {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 18px 24px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .scan-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 18px 28px;
+      width: 100%;
+    }
+
+    .scan-meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .scan-meta-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .scan-meta-value {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-light);
+      font-family: var(--font-mono);
+      word-break: break-all;
+    }
+
+    /* KPI Summary Cards Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+    }
+
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.15s ease-in-out;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card:hover {
+      border-color: #484f58;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--card-border);
+    }
+
+    .kpi-card.kpi-accent::before { background: var(--accent); }
+    .kpi-card.kpi-success::before { background: var(--success); }
+    .kpi-card.kpi-warning::before { background: var(--warning); }
+    .kpi-card.kpi-danger::before { background: var(--danger); }
+
+    .kpi-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .kpi-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+    }
+
+    .kpi-icon {
+      color: var(--text-muted);
+      opacity: 0.8;
+    }
+
+    .kpi-value {
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: var(--text-light);
+      font-family: var(--font-mono);
+      line-height: 1.1;
+    }
+
+    .kpi-subtitle {
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -717,23 +841,7 @@
           this.state.targets = normalized.targets;
           this.state.activeTargetIndex = 0;
 
-          if (typeof this.renderDashboard === 'function') {
-            this.renderDashboard();
-          } else if (container) {
-            container.innerHTML = `
-              <div class="status-banner" style="display: block;">
-                <div style="font-size: 1rem; font-weight: 600; color: var(--success); margin-bottom: 6px;">
-                  ✓ JSON Parsed &amp; Validated Successfully
-                </div>
-                <div style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.6;">
-                  Scan ID: <strong style="color: var(--text-light);">${normalized.scan_metadata.scan_id || 'N/A'}</strong> | 
-                  Mode: <strong style="color: var(--text-light);">${normalized.scan_metadata.scan_mode || 'N/A'}</strong> | 
-                  Targets: <strong style="color: var(--text-light);">${normalized.targets.length}</strong> | 
-                  Hosts Up: <strong style="color: var(--text-light);">${normalized.summary.total_hosts_up}</strong>
-                </div>
-              </div>
-            `;
-          }
+          this.renderDashboard();
         } catch (err) {
           console.error("JSON parse error:", err);
           if (container) {
@@ -845,6 +953,147 @@
           summary,
           targets
         };
+      },
+
+      renderDashboard() {
+        const container = document.getElementById("viewContainer");
+        if (!container) return;
+
+        const meta = this.state.scanMetadata || {};
+        const sum = this.state.summary || {};
+        const targets = this.state.targets || [];
+
+        // Format ISO timestamp nicely
+        let formattedDate = 'N/A';
+        if (meta.timestamp) {
+          try {
+            const d = new Date(meta.timestamp);
+            formattedDate = isNaN(d.getTime()) ? meta.timestamp : d.toUTCString();
+          } catch (_) {
+            formattedDate = meta.timestamp;
+          }
+        }
+
+        container.innerHTML = `
+          <div class="dashboard-view">
+            <!-- Scan Metadata Banner -->
+            <section class="scan-meta-banner">
+              <div class="scan-meta-grid">
+                <div class="scan-meta-item">
+                  <span class="scan-meta-label">Scan ID</span>
+                  <span class="scan-meta-value" style="color: var(--accent);">${this.escapeHtml(meta.scan_id || 'N/A')}</span>
+                </div>
+                <div class="scan-meta-item">
+                  <span class="scan-meta-label">Scan Mode</span>
+                  <span class="scan-meta-value">${this.escapeHtml((meta.scan_mode || 'standard').toUpperCase())}</span>
+                </div>
+                <div class="scan-meta-item">
+                  <span class="scan-meta-label">Scan Profile</span>
+                  <span class="scan-meta-value">${this.escapeHtml(meta.scan_profile || 'default')}</span>
+                </div>
+                <div class="scan-meta-item">
+                  <span class="scan-meta-label">Execution Time</span>
+                  <span class="scan-meta-value" style="font-size: 0.85rem;">${this.escapeHtml(formattedDate)}</span>
+                </div>
+                <div class="scan-meta-item">
+                  <span class="scan-meta-label">Output Directory</span>
+                  <span class="scan-meta-value" style="font-size: 0.85rem;">${this.escapeHtml(meta.output_directory || 'results/')}</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- Executive Summary KPI Cards -->
+            <section class="kpi-grid">
+              <div class="kpi-card kpi-accent">
+                <div class="kpi-header">
+                  <span class="kpi-title">Total Targets</span>
+                  <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <circle cx="12" cy="12" r="6"></circle>
+                    <circle cx="12" cy="12" r="2"></circle>
+                  </svg>
+                </div>
+                <div class="kpi-value">${sum.total_targets || targets.length || 0}</div>
+                <div class="kpi-subtitle">Scope Target Count</div>
+              </div>
+
+              <div class="kpi-card kpi-success">
+                <div class="kpi-header">
+                  <span class="kpi-title">Hosts Up</span>
+                  <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                  </svg>
+                </div>
+                <div class="kpi-value" style="color: var(--success);">${sum.total_hosts_up || 0}</div>
+                <div class="kpi-subtitle">Responsive Hosts</div>
+              </div>
+
+              <div class="kpi-card kpi-accent">
+                <div class="kpi-header">
+                  <span class="kpi-title">Open Ports</span>
+                  <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                  </svg>
+                </div>
+                <div class="kpi-value">${sum.total_open_ports || 0}</div>
+                <div class="kpi-subtitle">Active Services Found</div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-title">Subdomains</span>
+                  <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="5" r="3"></circle>
+                    <circle cx="6" cy="12" r="3"></circle>
+                    <circle cx="18" cy="19" r="3"></circle>
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                  </svg>
+                </div>
+                <div class="kpi-value">${sum.total_subdomains || 0}</div>
+                <div class="kpi-subtitle">Discovered Subdomains</div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-header">
+                  <span class="kpi-title">Web Endpoints</span>
+                  <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                  </svg>
+                </div>
+                <div class="kpi-value">${sum.total_web_endpoints || 0}</div>
+                <div class="kpi-subtitle">Dirs &amp; Files Indexed</div>
+              </div>
+
+              <div class="kpi-card ${(sum.total_security_issues || 0) > 0 ? 'kpi-danger' : ''}">
+                <div class="kpi-header">
+                  <span class="kpi-title">Security Issues</span>
+                  <svg class="kpi-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${(sum.total_security_issues || 0) > 0 ? 'var(--danger)' : 'currentColor'}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                  </svg>
+                </div>
+                <div class="kpi-value" style="color: ${(sum.total_security_issues || 0) > 0 ? 'var(--danger)' : 'inherit'};">
+                  ${sum.total_security_issues || 0}
+                </div>
+                <div class="kpi-subtitle">Observations &amp; Risks</div>
+              </div>
+            </section>
+
+            <!-- Target Details Container (Will mount target switcher in Commit #7) -->
+            <div id="targetDetailsContainer"></div>
+          </div>
+        `;
+
+        if (typeof this.renderTargetSection === 'function') {
+          this.renderTargetSection();
+        }
       },
 
       escapeHtml(str) {
