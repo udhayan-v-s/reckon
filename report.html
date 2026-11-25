@@ -668,6 +668,117 @@
       color: var(--text-light);
     }
 
+    /* Reconnaissance Section Cards & Tables */
+    .module-section {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      margin-top: 18px;
+    }
+
+    .module-header {
+      background: #21262d;
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .module-title {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text-light);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .module-badge {
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: rgba(110, 118, 129, 0.2);
+      color: var(--text-muted);
+    }
+
+    .module-table-wrap {
+      overflow-x: auto;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.86rem;
+      text-align: left;
+    }
+
+    .data-table th {
+      background: #161b22;
+      border-bottom: 1px solid var(--card-border);
+      padding: 10px 16px;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .data-table td {
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 16px;
+      color: var(--text);
+      vertical-align: middle;
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.015);
+    }
+
+    .port-badge {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .proto-badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .os-card {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .os-card:last-child {
+      border-bottom: none;
+    }
+
+    .empty-state {
+      padding: 32px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -1266,13 +1377,206 @@
           ${tabsHtml}
           ${targetHeaderHtml}
           <div id="targetModuleViews">
-            <!-- Reconnaissance module views (Network, Web, Audit) mount here in Commits #8, #9, #10 -->
+            <!-- Reconnaissance module views (Network, Web, Audit) mount here -->
           </div>
         `;
 
-        if (typeof this.renderTargetModules === 'function') {
-          this.renderTargetModules(activeTarget);
+        this.renderTargetModules(activeTarget);
+      },
+
+      renderTargetModules(target) {
+        const moduleContainer = document.getElementById("targetModuleViews");
+        if (!moduleContainer) return;
+
+        let content = '';
+
+        // 1. Network Reconnaissance Section
+        content += this.renderNetworkSection(target);
+
+        // 2. Web Reconnaissance Section (Commit #9)
+        if (typeof this.renderWebSection === 'function') {
+          content += this.renderWebSection(target);
         }
+
+        // 3. Security Audit Section (Commit #10)
+        if (typeof this.renderSecurityAuditSection === 'function') {
+          content += this.renderSecurityAuditSection(target);
+        }
+
+        moduleContainer.innerHTML = content;
+      },
+
+      renderNetworkSection(target) {
+        const ports = target.ports || [];
+        const services = target.services || [];
+        const osList = target.os || [];
+        const dnsList = target.dns || [];
+
+        // Build combined map of ports and service details
+        const portMap = new Map();
+
+        // 1. In RECKON results.json, ports can be an array of numbers [22, 80] or objects [{port: 22, ...}]
+        ports.forEach(p => {
+          const portNum = typeof p === 'object' && p !== null ? p.port : p;
+          if (portNum === undefined || portNum === null) return;
+          const proto = (typeof p === 'object' && p !== null ? p.protocol : 'tcp') || 'tcp';
+          const state = (typeof p === 'object' && p !== null ? (p.state || p.status) : 'open') || 'open';
+          const serviceName = (typeof p === 'object' && p !== null ? p.service : '-') || '-';
+
+          portMap.set(`${portNum}/${proto.toLowerCase()}`, {
+            port: portNum,
+            protocol: proto.toLowerCase(),
+            state: state,
+            service: serviceName,
+            product: '',
+            version: '',
+            banner: ''
+          });
+        });
+
+        // 2. Merge detailed services information if present
+        services.forEach(s => {
+          if (!s || s.port === undefined || s.port === null) return;
+          const portNum = s.port;
+          const proto = (s.protocol || 'tcp').toLowerCase();
+          const key = `${portNum}/${proto}`;
+          const serviceState = s.status || s.state || 'open';
+          const serviceName = s.service || s.name || '-';
+
+          if (portMap.has(key)) {
+            const entry = portMap.get(key);
+            entry.state = serviceState;
+            if (serviceName && serviceName !== '-') entry.service = serviceName;
+            entry.product = s.product || '';
+            entry.version = s.version || '';
+            entry.banner = s.banner || '';
+          } else {
+            portMap.set(key, {
+              port: portNum,
+              protocol: proto,
+              state: serviceState,
+              service: serviceName,
+              product: s.product || '',
+              version: s.version || '',
+              banner: s.banner || ''
+            });
+          }
+        });
+
+        const portRows = Array.from(portMap.values());
+
+        const portsTableHtml = portRows.length > 0 ? `
+          <div class="module-table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 100px;">Port</th>
+                  <th style="width: 90px;">Protocol</th>
+                  <th style="width: 90px;">State</th>
+                  <th>Service</th>
+                  <th>Product / Version</th>
+                  <th>Banner / Info</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${portRows.map(row => `
+                  <tr>
+                    <td><span class="port-badge">${row.port}</span></td>
+                    <td><span class="proto-badge">${this.escapeHtml(row.protocol)}</span></td>
+                    <td><span class="badge ${row.state === 'open' ? 'badge-success' : 'badge-accent'}">${this.escapeHtml(row.state)}</span></td>
+                    <td style="font-weight: 600; color: var(--text-light);">${this.escapeHtml(row.service)}</td>
+                    <td>${this.escapeHtml([row.product, row.version].filter(Boolean).join(' ') || '-')}</td>
+                    <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${this.escapeHtml(row.banner || '-')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : `
+          <div class="empty-state">No open ports or network services discovered for this target.</div>
+        `;
+
+        // Operating System detection card
+        const osHtml = osList.length > 0 ? `
+          <div class="module-section">
+            <div class="module-header">
+              <div class="module-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                  <line x1="8" y1="21" x2="16" y2="21"></line>
+                  <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                OS Fingerprinting &amp; Detection
+              </div>
+              <span class="module-badge">${osList.length} match${osList.length > 1 ? 'es' : ''}</span>
+            </div>
+            ${osList.map(os => `
+              <div class="os-card">
+                <div style="font-weight: 600; color: var(--text-light); font-size: 0.95rem;">${this.escapeHtml(os.name || os.os || 'Unknown OS')}</div>
+                ${os.accuracy ? `<span class="badge badge-accent">Accuracy: ${os.accuracy}%</span>` : ''}
+                ${os.type ? `<span class="format-pill">${this.escapeHtml(os.type)}</span>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        ` : '';
+
+        // DNS resolution card
+        const dnsHtml = dnsList.length > 0 ? `
+          <div class="module-section">
+            <div class="module-header">
+              <div class="module-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="2" y1="12" x2="22" y2="12"></line>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
+                DNS Records &amp; Nameservers
+              </div>
+              <span class="module-badge">${dnsList.length} record${dnsList.length > 1 ? 's' : ''}</span>
+            </div>
+            <div class="module-table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 100px;">Type</th>
+                    <th>Name / Host</th>
+                    <th>Value / Target</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${dnsList.map(d => `
+                    <tr>
+                      <td><span class="format-pill">${this.escapeHtml(d.type || 'A')}</span></td>
+                      <td style="font-family: var(--font-mono);">${this.escapeHtml(d.name || target.target)}</td>
+                      <td style="font-family: var(--font-mono); color: var(--accent);">${this.escapeHtml(d.value || d.address || '-')}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ` : '';
+
+        return `
+          <!-- Open Ports & Services -->
+          <div class="module-section">
+            <div class="module-header">
+              <div class="module-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                  <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                  <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                  <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                </svg>
+                Network Ports &amp; Services
+              </div>
+              <span class="module-badge">${portRows.length} port${portRows.length !== 1 ? 's' : ''}</span>
+            </div>
+            ${portsTableHtml}
+          </div>
+          ${osHtml}
+          ${dnsHtml}
+        `;
       },
 
       switchTarget(index) {
