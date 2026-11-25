@@ -859,6 +859,67 @@
       text-decoration: underline;
     }
 
+    /* Security Audit Styles */
+    .audit-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .cors-card {
+      background: #1c2128;
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .cors-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.86rem;
+      border-bottom: 1px solid rgba(48, 54, 61, 0.6);
+      padding-bottom: 8px;
+    }
+
+    .cors-item:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .methods-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+      padding: 16px 20px;
+    }
+
+    .method-pill {
+      background: #1c2128;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+    }
+
+    .method-pill.enabled {
+      border-color: rgba(63, 185, 80, 0.4);
+      background: rgba(63, 185, 80, 0.08);
+    }
+
+    .method-pill.disabled {
+      border-color: rgba(48, 54, 61, 0.8);
+      opacity: 0.7;
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -1866,6 +1927,182 @@
           ${filesSectionHtml}
           ${dirsSectionHtml}
           ${resSectionHtml}
+        `;
+      },
+
+      renderSecurityAuditSection(target) {
+        const http = target.http_analysis || {};
+        const headers = http.headers || [];
+        const disclosures = http.disclosures || [];
+        const cors = http.cors || {};
+        const methods = http.methods || [];
+
+        // Check if there are any audit items at all
+        if (headers.length === 0 && disclosures.length === 0 && !cors.risk && methods.length === 0) {
+          return '';
+        }
+
+        // 1. HTTP Security Headers Table
+        let headersTableHtml = '';
+        if (headers.length > 0) {
+          headersTableHtml = `
+            <div class="module-section">
+              <div class="module-header">
+                <div class="module-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                  </svg>
+                  HTTP Security Headers Compliance
+                </div>
+                <span class="module-badge">${headers.length} headers checked</span>
+              </div>
+              <div class="module-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Security Header</th>
+                      <th style="width: 120px;">Status</th>
+                      <th>Observed Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${headers.map(h => {
+                      const isPresent = (h.status || '').toUpperCase() === 'PRESENT';
+                      return `
+                        <tr>
+                          <td style="font-weight: 600; color: var(--text-light); font-family: var(--font-mono); font-size: 0.85rem;">
+                            ${this.escapeHtml(h.header)}
+                          </td>
+                          <td>
+                            <span class="badge ${isPresent ? 'badge-success' : 'badge-accent'}" style="${!isPresent ? 'background: var(--danger-dim); color: var(--danger); border-color: rgba(248,81,73,0.3);' : ''}">
+                              ${this.escapeHtml(h.status || 'MISSING')}
+                            </span>
+                          </td>
+                          <td style="font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-muted);">
+                            ${this.escapeHtml(h.value && h.value !== '-' ? h.value : '—')}
+                          </td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }
+
+        // 2. CORS Misconfiguration Risk & Info Disclosures
+        const corsRisk = (cors.risk || 'NONE').toUpperCase();
+        let corsRiskBadge = `<span class="risk-badge risk-low">SECURE</span>`;
+        if (corsRisk === 'CRITICAL' || corsRisk === 'HIGH') {
+          corsRiskBadge = `<span class="risk-badge risk-critical">${corsRisk}</span>`;
+        } else if (corsRisk === 'MEDIUM') {
+          corsRiskBadge = `<span class="risk-badge risk-medium">MEDIUM</span>`;
+        } else if (corsRisk === 'LOW') {
+          corsRiskBadge = `<span class="risk-badge risk-low">LOW</span>`;
+        }
+
+        const corsCardHtml = `
+          <div class="cors-card">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div style="font-weight: 600; color: var(--text-light); font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+                CORS Policy Evaluation
+              </div>
+              ${corsRiskBadge}
+            </div>
+            <div class="cors-item">
+              <span style="color: var(--text-muted);">Origin Reflected:</span>
+              <span style="font-family: var(--font-mono); font-weight: 600; color: ${cors.origin_reflected ? 'var(--danger)' : 'var(--success)'};">
+                ${cors.origin_reflected ? 'YES (Vulnerable)' : 'No'}
+              </span>
+            </div>
+            <div class="cors-item">
+              <span style="color: var(--text-muted);">Credentials Allowed:</span>
+              <span style="font-family: var(--font-mono); font-weight: 600; color: ${cors.credentials_allowed ? 'var(--danger)' : 'var(--text-light)'};">
+                ${cors.credentials_allowed ? 'YES (Access-Control-Allow-Credentials: true)' : 'No'}
+              </span>
+            </div>
+            <div class="cors-item">
+              <span style="color: var(--text-muted);">Allowed Origin Header:</span>
+              <span style="font-family: var(--font-mono); color: var(--accent); font-size: 0.82rem;">
+                ${this.escapeHtml(cors.allow_origin || '-')}
+              </span>
+            </div>
+            <div class="cors-item">
+              <span style="color: var(--text-muted);">Policy Audit Status:</span>
+              <span style="font-size: 0.82rem; color: var(--text);">
+                ${this.escapeHtml(cors.status || 'Audited')}
+              </span>
+            </div>
+          </div>
+        `;
+
+        // Information disclosures
+        let disclosuresHtml = '';
+        if (disclosures.length > 0) {
+          disclosuresHtml = `
+            <div class="cors-card">
+              <div style="font-weight: 600; color: var(--text-light); font-size: 0.95rem; display: flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                Information &amp; Banner Disclosures
+              </div>
+              ${disclosures.map(d => `
+                <div class="cors-item">
+                  <span style="font-family: var(--font-mono); color: var(--text-light); font-size: 0.82rem;">${this.escapeHtml(d.header)}:</span>
+                  <span style="font-family: var(--font-mono); color: var(--accent); font-size: 0.82rem; word-break: break-all;">${this.escapeHtml(d.value)}</span>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+
+        // 3. Allowed HTTP Methods
+        let methodsHtml = '';
+        if (methods.length > 0) {
+          methodsHtml = `
+            <div class="module-section">
+              <div class="module-header">
+                <div class="module-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                  </svg>
+                  HTTP Verb / Method Enumeration
+                </div>
+                <span class="module-badge">${methods.length} methods tested</span>
+              </div>
+              <div class="methods-grid">
+                ${methods.map(m => {
+                  const isEnabled = (m.status || '').toUpperCase() === 'ENABLED';
+                  return `
+                    <div class="method-pill ${isEnabled ? 'enabled' : 'disabled'}">
+                      <span style="font-weight: 600; color: ${isEnabled ? 'var(--text-light)' : 'var(--text-muted)'};">${this.escapeHtml(m.method)}</span>
+                      <span class="badge ${isEnabled ? 'badge-success' : 'badge-accent'}" style="font-size: 0.7rem; padding: 1px 6px;">
+                        ${this.escapeHtml(m.code || (isEnabled ? '200' : '405'))}
+                      </span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          ${headersTableHtml}
+          <div class="audit-grid">
+            ${corsCardHtml}
+            ${disclosuresHtml}
+          </div>
+          ${methodsHtml}
         `;
       },
 
