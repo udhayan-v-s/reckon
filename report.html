@@ -566,6 +566,108 @@
       margin-top: 6px;
     }
 
+    /* Target Switcher Navigation */
+    .target-nav-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .target-nav-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .target-nav-title {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-light);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .target-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .target-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: #21262d;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+      white-space: nowrap;
+    }
+
+    .target-tab:hover {
+      background: #30363d;
+      border-color: #8b949e;
+      color: var(--text-light);
+    }
+
+    .target-tab.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .target-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+
+    .target-status-dot.up {
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    .target-header-banner {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 16px 22px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .target-header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .target-header-ip {
+      font-size: 1.25rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-light);
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -1086,14 +1188,96 @@
               </div>
             </section>
 
-            <!-- Target Details Container (Will mount target switcher in Commit #7) -->
+            <!-- Target Details Container -->
             <div id="targetDetailsContainer"></div>
           </div>
         `;
 
-        if (typeof this.renderTargetSection === 'function') {
-          this.renderTargetSection();
+        this.renderTargetSection();
+      },
+
+      renderTargetSection() {
+        const container = document.getElementById("targetDetailsContainer");
+        if (!container) return;
+
+        const targets = this.state.targets || [];
+        if (targets.length === 0) {
+          container.innerHTML = `<div class="status-banner">No targets found in scan report.</div>`;
+          return;
         }
+
+        // Clamp activeTargetIndex safely
+        if (this.state.activeTargetIndex >= targets.length) {
+          this.state.activeTargetIndex = 0;
+        }
+
+        const activeTarget = targets[this.state.activeTargetIndex];
+        const isUp = (activeTarget.host_status || '').toUpperCase() === 'UP';
+
+        // Target Switcher Tabs HTML (shown if multi-target, or clean header if single)
+        let tabsHtml = '';
+        if (targets.length > 1) {
+          tabsHtml = `
+            <div class="target-nav-card">
+              <div class="target-nav-header">
+                <div class="target-nav-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                    <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                    <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                  </svg>
+                  Select Target (${targets.length} targets scanned)
+                </div>
+              </div>
+              <div class="target-tabs">
+                ${targets.map((t, idx) => {
+                  const tUp = (t.host_status || '').toUpperCase() === 'UP';
+                  const isActive = idx === this.state.activeTargetIndex;
+                  return `
+                    <button class="target-tab ${isActive ? 'active' : ''}" type="button" onclick="ReckonApp.switchTarget(${idx})">
+                      <span class="target-status-dot ${tUp ? 'up' : ''}"></span>
+                      ${this.escapeHtml(t.target)}
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // Target Header Banner
+        const targetHeaderHtml = `
+          <div class="target-header-banner">
+            <div class="target-header-left">
+              <div class="target-header-ip">${this.escapeHtml(activeTarget.target)}</div>
+              <span class="badge ${isUp ? 'badge-success' : 'badge-accent'}">
+                Status: ${this.escapeHtml(activeTarget.host_status || 'UNKNOWN')}
+              </span>
+              <span class="format-pill">Type: ${this.escapeHtml(activeTarget.target_type || 'host')}</span>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--font-mono);">
+              Target ${this.state.activeTargetIndex + 1} of ${targets.length}
+            </div>
+          </div>
+        `;
+
+        container.innerHTML = `
+          ${tabsHtml}
+          ${targetHeaderHtml}
+          <div id="targetModuleViews">
+            <!-- Reconnaissance module views (Network, Web, Audit) mount here in Commits #8, #9, #10 -->
+          </div>
+        `;
+
+        if (typeof this.renderTargetModules === 'function') {
+          this.renderTargetModules(activeTarget);
+        }
+      },
+
+      switchTarget(index) {
+        this.state.activeTargetIndex = index;
+        this.renderTargetSection();
       },
 
       escapeHtml(str) {
