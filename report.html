@@ -779,6 +779,86 @@
       font-size: 0.88rem;
     }
 
+    /* Web Reconnaissance Styles */
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+      padding: 16px 20px;
+    }
+
+    .tech-card {
+      background: #1c2128;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .tech-name {
+      font-weight: 600;
+      color: var(--text-light);
+      font-size: 0.92rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .tech-version {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--accent);
+    }
+
+    .tech-cat {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .status-code-badge {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+
+    .status-2xx { background: var(--success-dim); color: var(--success); }
+    .status-3xx { background: var(--accent-dim); color: var(--accent); }
+    .status-4xx { background: var(--warning-dim); color: var(--warning); }
+    .status-5xx { background: var(--danger-dim); color: var(--danger); }
+
+    .risk-badge {
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      display: inline-block;
+    }
+
+    .risk-critical { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(248, 81, 73, 0.4); }
+    .risk-high { background: rgba(219, 109, 40, 0.15); color: #db6d28; border: 1px solid rgba(219, 109, 40, 0.4); }
+    .risk-medium { background: var(--warning-dim); color: var(--warning); border: 1px solid rgba(210, 153, 34, 0.4); }
+    .risk-low { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(88, 166, 255, 0.3); }
+    .risk-info { background: rgba(110, 118, 129, 0.2); color: var(--text-muted); }
+
+    .path-link {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: var(--accent);
+      text-decoration: none;
+      word-break: break-all;
+    }
+
+    .path-link:hover {
+      text-decoration: underline;
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -1576,6 +1656,216 @@
           </div>
           ${osHtml}
           ${dnsHtml}
+        `;
+      },
+
+      getStatusBadge(status) {
+        const code = parseInt(status, 10);
+        if (code >= 200 && code < 300) return `<span class="status-code-badge status-2xx">${code}</span>`;
+        if (code >= 300 && code < 400) return `<span class="status-code-badge status-3xx">${code}</span>`;
+        if (code >= 400 && code < 500) return `<span class="status-code-badge status-4xx">${code}</span>`;
+        if (code >= 500) return `<span class="status-code-badge status-5xx">${code}</span>`;
+        return `<span class="status-code-badge status-4xx">${this.escapeHtml(status || '-')}</span>`;
+      },
+
+      getRiskBadge(classification) {
+        if (!classification) return `<span class="risk-badge risk-info">INFO</span>`;
+        const upper = classification.toUpperCase();
+        if (upper.includes('CRITICAL')) return `<span class="risk-badge risk-critical">CRITICAL</span>`;
+        if (upper.includes('HIGH')) return `<span class="risk-badge risk-high">HIGH</span>`;
+        if (upper.includes('MEDIUM')) return `<span class="risk-badge risk-medium">MEDIUM</span>`;
+        if (upper.includes('LOW')) return `<span class="risk-badge risk-low">LOW</span>`;
+        return `<span class="risk-badge risk-info">${this.escapeHtml(classification)}</span>`;
+      },
+
+      renderWebSection(target) {
+        const techs = target.technologies || [];
+        const cmsList = target.cms || [];
+        const wafList = target.waf || [];
+        const dirs = target.directories || [];
+        const files = target.files || [];
+        const crawled = target.crawled_urls || [];
+        const resources = target.resources || [];
+
+        // 1. Technologies, CMS & WAF Grid
+        let techSectionHtml = '';
+        if (techs.length > 0 || cmsList.length > 0 || wafList.length > 0) {
+          techSectionHtml = `
+            <div class="module-section">
+              <div class="module-header">
+                <div class="module-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                    <polyline points="2 17 12 22 22 17"></polyline>
+                    <polyline points="2 12 12 17 22 12"></polyline>
+                  </svg>
+                  Web Technologies, Frameworks &amp; CMS
+                </div>
+                <span class="module-badge">${techs.length + cmsList.length + wafList.length} detected</span>
+              </div>
+              <div class="tech-grid">
+                ${wafList.map(w => `
+                  <div class="tech-card" style="border-color: rgba(210, 153, 34, 0.4);">
+                    <div class="tech-name">
+                      <span>${this.escapeHtml(w.name || w)}</span>
+                      <span class="risk-badge risk-medium">WAF</span>
+                    </div>
+                    <div class="tech-version">${this.escapeHtml(w.manufacturer || 'Active Protection')}</div>
+                  </div>
+                `).join('')}
+                ${cmsList.map(c => `
+                  <div class="tech-card" style="border-color: rgba(88, 166, 255, 0.4);">
+                    <div class="tech-name">
+                      <span>${this.escapeHtml(c.name || c)}</span>
+                      <span class="badge badge-accent">CMS</span>
+                    </div>
+                    <div class="tech-version">${this.escapeHtml(c.version || '-')}</div>
+                  </div>
+                `).join('')}
+                ${techs.map(t => `
+                  <div class="tech-card">
+                    <div class="tech-name">
+                      <span>${this.escapeHtml(t.name)}</span>
+                      <span class="tech-version">${this.escapeHtml(t.version && t.version !== '-' ? t.version : '')}</span>
+                    </div>
+                    ${t.categories && t.categories !== '-' ? `<div class="tech-cat">${this.escapeHtml(t.categories)}</div>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // 2. Sensitive Files & Endpoints
+        let filesSectionHtml = '';
+        if (files.length > 0) {
+          filesSectionHtml = `
+            <div class="module-section">
+              <div class="module-header">
+                <div class="module-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                  Discovered Sensitive Files &amp; Backups
+                </div>
+                <span class="module-badge">${files.length} file${files.length > 1 ? 's' : ''}</span>
+              </div>
+              <div class="module-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 80px;">Status</th>
+                      <th>Path</th>
+                      <th style="width: 140px;">Classification</th>
+                      <th style="width: 100px;">Size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${files.map(f => `
+                      <tr>
+                        <td>${this.getStatusBadge(f.status)}</td>
+                        <td><span class="path-link">${this.escapeHtml(f.path)}</span></td>
+                        <td>${this.getRiskBadge(f.classification)}</td>
+                        <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${this.escapeHtml(f.length || '-')} B</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }
+
+        // 3. Web Directories
+        let dirsSectionHtml = '';
+        if (dirs.length > 0) {
+          dirsSectionHtml = `
+            <div class="module-section">
+              <div class="module-header">
+                <div class="module-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  Indexed Web Directories
+                </div>
+                <span class="module-badge">${dirs.length} director${dirs.length > 1 ? 'ies' : 'y'}</span>
+              </div>
+              <div class="module-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 80px;">Status</th>
+                      <th>Directory Path</th>
+                      <th>Redirect Target</th>
+                      <th style="width: 100px;">Size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${dirs.map(d => `
+                      <tr>
+                        <td>${this.getStatusBadge(d.status)}</td>
+                        <td><span class="path-link">${this.escapeHtml(d.path)}</span></td>
+                        <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${this.escapeHtml(d.redirect && d.redirect !== '-' ? d.redirect : '-')}</td>
+                        <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${this.escapeHtml(d.length || '-')} B</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }
+
+        // 4. Crawled Web Resources & Metadata Files (robots.txt, sitemap.xml, etc.)
+        let resSectionHtml = '';
+        if (resources.length > 0) {
+          resSectionHtml = `
+            <div class="module-section">
+              <div class="module-header">
+                <div class="module-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                  Standard Resources &amp; Metadata Files
+                </div>
+                <span class="module-badge">${resources.length} resource${resources.length > 1 ? 's' : ''}</span>
+              </div>
+              <div class="module-table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 80px;">Status</th>
+                      <th>Resource Path</th>
+                      <th>Details</th>
+                      <th style="width: 100px;">Size</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${resources.map(r => `
+                      <tr>
+                        <td>${this.getStatusBadge(r.status)}</td>
+                        <td><span class="path-link">${this.escapeHtml(r.path)}</span></td>
+                        <td style="font-size: 0.82rem; color: var(--text);">${this.escapeHtml(r.details || '-')}</td>
+                        <td style="font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted);">${this.escapeHtml(r.size || '-')} B</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          ${techSectionHtml}
+          ${filesSectionHtml}
+          ${dirsSectionHtml}
+          ${resSectionHtml}
         `;
       },
 
