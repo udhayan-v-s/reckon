@@ -920,6 +920,118 @@
       opacity: 0.7;
     }
 
+    /* Global Filter & Search Toolbar */
+    .filter-toolbar {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 14px 18px;
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .filter-search-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      flex: 1;
+      min-width: 220px;
+      max-width: 420px;
+      transition: border-color 0.15s ease-in-out;
+    }
+
+    .filter-search-wrap:focus-within {
+      border-color: var(--accent);
+    }
+
+    .filter-search-input {
+      background: transparent;
+      border: none;
+      color: var(--text-light);
+      font-size: 0.86rem;
+      font-family: var(--font-sans);
+      outline: none;
+      width: 100%;
+    }
+
+    .filter-search-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .filter-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .filter-chip {
+      padding: 5px 11px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      background: #21262d;
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease-in-out;
+    }
+
+    .filter-chip:hover {
+      background: #30363d;
+      color: var(--text-light);
+    }
+
+    .filter-chip.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .filter-stats {
+      font-size: 0.78rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      margin-left: 4px;
+    }
+
+    .data-table th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s ease-in-out;
+    }
+
+    .data-table th.sortable:hover {
+      color: var(--text-light);
+    }
+
+    .sort-indicator {
+      display: inline-block;
+      margin-left: 5px;
+      font-size: 0.7rem;
+      color: var(--accent);
+    }
+
+    .filter-empty-banner {
+      background: var(--card-bg);
+      border: 1px dashed var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 28px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      margin-top: 18px;
+      font-size: 0.9rem;
+    }
+
     /* Status Banner */
     .status-banner {
       background: var(--card-bg);
@@ -1045,7 +1157,11 @@
         summary: null,
         targets: [],
         activeTargetIndex: 0,
-        viewMode: 'dashboard'
+        viewMode: 'dashboard',
+        filters: {
+          query: '',
+          quick: 'all'
+        }
       },
 
       init() {
@@ -1514,14 +1630,43 @@
           </div>
         `;
 
+        const filterBarHtml = `
+          <div class="filter-toolbar">
+            <div class="filter-search-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="text"
+                id="globalSearchInput"
+                class="filter-search-input"
+                placeholder="Search ports, paths, services, technologies, headers..."
+                value="${this.escapeHtml(this.state.filters.query || '')}"
+              >
+            </div>
+            <div class="filter-controls">
+              <button class="filter-chip ${this.state.filters.quick === 'all' ? 'active' : ''}" type="button" data-quick-filter="all">All</button>
+              <button class="filter-chip ${this.state.filters.quick === '2xx' ? 'active' : ''}" type="button" data-quick-filter="2xx">2xx OK</button>
+              <button class="filter-chip ${this.state.filters.quick === '3xx' ? 'active' : ''}" type="button" data-quick-filter="3xx">3xx Redirect</button>
+              <button class="filter-chip ${this.state.filters.quick === '4xx' ? 'active' : ''}" type="button" data-quick-filter="4xx">4xx Auth/Deny</button>
+              <button class="filter-chip ${this.state.filters.quick === 'risk' ? 'active' : ''}" type="button" data-quick-filter="risk">Critical / High / Missing</button>
+              <button class="btn" id="btnClearFilters" type="button" style="padding: 5px 10px; font-size: 0.78rem; display: none;">Clear</button>
+              <span class="filter-stats" id="filterMatchStats"></span>
+            </div>
+          </div>
+        `;
+
         container.innerHTML = `
           ${tabsHtml}
           ${targetHeaderHtml}
+          ${filterBarHtml}
           <div id="targetModuleViews">
             <!-- Reconnaissance module views (Network, Web, Audit) mount here -->
           </div>
         `;
 
+        this.bindFilterEvents();
         this.renderTargetModules(activeTarget);
       },
 
@@ -1544,7 +1689,184 @@
           content += this.renderSecurityAuditSection(target);
         }
 
-        moduleContainer.innerHTML = content;
+        moduleContainer.innerHTML = content + `<div id="filterEmptyBanner" class="filter-empty-banner" style="display: none;">No reconnaissance findings match the current search or filter criteria.</div>`;
+        this.bindTableSorting(moduleContainer);
+        this.applyDashboardFilters();
+      },
+
+      bindFilterEvents() {
+        const searchInput = document.getElementById("globalSearchInput");
+        const quickBtns = document.querySelectorAll("[data-quick-filter]");
+        const clearBtn = document.getElementById("btnClearFilters");
+
+        if (searchInput) {
+          searchInput.addEventListener("input", (e) => {
+            this.state.filters.query = e.target.value || '';
+            this.applyDashboardFilters();
+          });
+        }
+
+        quickBtns.forEach(btn => {
+          btn.addEventListener("click", () => {
+            this.state.filters.quick = btn.getAttribute("data-quick-filter") || 'all';
+            quickBtns.forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            this.applyDashboardFilters();
+          });
+        });
+
+        if (clearBtn) {
+          clearBtn.addEventListener("click", () => {
+            this.state.filters.query = '';
+            this.state.filters.quick = 'all';
+            if (searchInput) searchInput.value = '';
+            quickBtns.forEach(b => {
+              b.classList.toggle("active", b.getAttribute("data-quick-filter") === 'all');
+            });
+            this.applyDashboardFilters();
+          });
+        }
+      },
+
+      matchesQuickFilter(rowEl, quick) {
+        if (!quick || quick === 'all') return true;
+        const text = (rowEl.textContent || '').toUpperCase();
+        if (quick === '2xx') return !!rowEl.querySelector('.status-2xx') || /\b2\d\d\b/.test(text);
+        if (quick === '3xx') return !!rowEl.querySelector('.status-3xx') || /\b3\d\d\b/.test(text);
+        if (quick === '4xx') return !!rowEl.querySelector('.status-4xx') || /\b4\d\d\b/.test(text);
+        if (quick === 'risk') {
+          return text.includes('CRITICAL') || text.includes('HIGH') || text.includes('MISSING') || text.includes('VULNERABLE');
+        }
+        return true;
+      },
+
+      applyDashboardFilters() {
+        const moduleContainer = document.getElementById("targetModuleViews");
+        if (!moduleContainer) return;
+
+        const query = (this.state.filters.query || '').trim().toLowerCase();
+        const quick = this.state.filters.quick || 'all';
+        const isFiltered = Boolean(query) || quick !== 'all';
+
+        const clearBtn = document.getElementById("btnClearFilters");
+        if (clearBtn) {
+          clearBtn.style.display = isFiltered ? "inline-flex" : "none";
+        }
+
+        let totalItems = 0;
+        let visibleItems = 0;
+
+        // Filter each module-section independently
+        const sections = moduleContainer.querySelectorAll(".module-section");
+        sections.forEach(section => {
+          const tableRows = section.querySelectorAll("tbody tr");
+          const cards = section.querySelectorAll(".tech-card, .os-card, .method-pill");
+          const items = tableRows.length > 0 ? Array.from(tableRows) : Array.from(cards);
+
+          if (items.length === 0) {
+            section.style.display = isFiltered ? "none" : "";
+            return;
+          }
+
+          let sectionVisible = 0;
+          items.forEach(item => {
+            totalItems++;
+            const text = (item.textContent || '').toLowerCase();
+            const matchesText = !query || text.includes(query);
+            const matchesQuick = this.matchesQuickFilter(item, quick);
+
+            if (matchesText && matchesQuick) {
+              item.style.display = "";
+              sectionVisible++;
+              visibleItems++;
+            } else {
+              item.style.display = "none";
+            }
+          });
+
+          section.style.display = sectionVisible > 0 ? "" : "none";
+        });
+
+        // Also handle audit-grid (CORS + Disclosures cards) when filtering
+        const auditGrids = moduleContainer.querySelectorAll(".audit-grid");
+        auditGrids.forEach(grid => {
+          const cards = Array.from(grid.querySelectorAll(".cors-card"));
+          let gridVisible = 0;
+          cards.forEach(card => {
+            totalItems++;
+            const text = (card.textContent || '').toLowerCase();
+            const matchesText = !query || text.includes(query);
+            const matchesQuick = this.matchesQuickFilter(card, quick);
+            if (matchesText && matchesQuick) {
+              card.style.display = "";
+              gridVisible++;
+              visibleItems++;
+            } else {
+              card.style.display = "none";
+            }
+          });
+          grid.style.display = gridVisible > 0 ? "" : "none";
+        });
+
+        const emptyBanner = document.getElementById("filterEmptyBanner");
+        if (emptyBanner) {
+          emptyBanner.style.display = (isFiltered && visibleItems === 0) ? "block" : "none";
+        }
+
+        const statsEl = document.getElementById("filterMatchStats");
+        if (statsEl) {
+          statsEl.textContent = isFiltered ? `${visibleItems} / ${totalItems} shown` : '';
+        }
+      },
+
+      bindTableSorting(root) {
+        if (!root) return;
+        const tables = root.querySelectorAll("table.data-table");
+        tables.forEach(table => {
+          const headers = table.querySelectorAll("thead th");
+          headers.forEach((th, colIdx) => {
+            th.classList.add("sortable");
+            th.title = "Click to sort column";
+            th.addEventListener("click", () => {
+              const tbody = table.querySelector("tbody");
+              if (!tbody) return;
+              const rows = Array.from(tbody.querySelectorAll("tr"));
+              if (rows.length < 2) return;
+
+              const currentDir = th.getAttribute("data-sort-dir") === "asc" ? "desc" : "asc";
+              headers.forEach(h => {
+                h.removeAttribute("data-sort-dir");
+                const existing = h.querySelector(".sort-indicator");
+                if (existing) existing.remove();
+              });
+
+              th.setAttribute("data-sort-dir", currentDir);
+              const indicator = document.createElement("span");
+              indicator.className = "sort-indicator";
+              indicator.textContent = currentDir === "asc" ? "▲" : "▼";
+              th.appendChild(indicator);
+
+              rows.sort((a, b) => {
+                const aText = (a.children[colIdx] ? a.children[colIdx].textContent : "").trim();
+                const bText = (b.children[colIdx] ? b.children[colIdx].textContent : "").trim();
+
+                const aNum = parseFloat(aText.replace(/[^\d.-]/g, ""));
+                const bNum = parseFloat(bText.replace(/[^\d.-]/g, ""));
+                const bothNumeric = /^\d+(\.\d+)?(\s*B)?$/i.test(aText) && /^\d+(\.\d+)?(\s*B)?$/i.test(bText);
+
+                let cmp = 0;
+                if (bothNumeric && !isNaN(aNum) && !isNaN(bNum)) {
+                  cmp = aNum - bNum;
+                } else {
+                  cmp = aText.localeCompare(bText, undefined, { numeric: true, sensitivity: "base" });
+                }
+                return currentDir === "asc" ? cmp : -cmp;
+              });
+
+              rows.forEach(r => tbody.appendChild(r));
+            });
+          });
+        });
       },
 
       renderNetworkSection(target) {
@@ -2413,6 +2735,7 @@
         this.state.scanMetadata = null;
         this.state.summary = null;
         this.state.targets = [];
+        this.state.filters = { query: '', quick: 'all' };
 
         const fileInput = document.getElementById("fileInput");
         if (fileInput) fileInput.value = '';
