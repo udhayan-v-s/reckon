@@ -1107,10 +1107,360 @@
     footer a:hover {
       text-decoration: underline;
     }
+
+    /* Print-Only Classification Banner */
+    .print-classification-bar {
+      display: none;
+    }
+
+    /* Professional Print & PDF Export Stylesheet */
+    @page {
+      size: A4 portrait;
+      margin: 15mm 14mm 16mm 14mm;
+    }
+
+    @media print {
+      :root {
+        --bg: #ffffff;
+        --card-bg: #ffffff;
+        --card-border: #cbd5e1;
+        --card-hover: #f8fafc;
+        --text: #1e293b;
+        --text-muted: #475569;
+        --text-light: #0f172a;
+        --accent: #0369a1;
+        --accent-dim: #e0f2fe;
+        --success: #15803d;
+        --success-dim: #dcfce7;
+        --warning: #b45309;
+        --warning-dim: #fef3c7;
+        --danger: #b91c1c;
+        --danger-dim: #fee2e2;
+        --code-bg: #f8fafc;
+      }
+
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        box-shadow: none !important;
+      }
+
+      body {
+        display: block !important;
+        min-height: auto !important;
+        background: #ffffff !important;
+        color: #1e293b !important;
+        font-size: 9.5pt;
+        line-height: 1.45;
+      }
+
+      .container {
+        display: block !important;
+        flex: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      #app,
+      .dashboard-view,
+      #targetDetailsContainer,
+      #targetModuleViews {
+        display: block !important;
+      }
+
+      /* Hide interactive-only UI chrome */
+      .header-actions,
+      #fileLoadedBar,
+      #uploadZone,
+      .filter-toolbar,
+      .target-nav-card,
+      .sort-indicator,
+      #filterEmptyBanner,
+      .txt-toolbar {
+        display: none !important;
+      }
+
+      /* Executive Report Cover Header */
+      .print-classification-bar {
+        display: flex !important;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 7.5pt;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #475569;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 6px;
+        margin-bottom: 12px;
+      }
+
+      header {
+        background: #ffffff !important;
+        border: none !important;
+        border-left: 4px solid #0369a1 !important;
+        border-bottom: 1.5px solid #cbd5e1 !important;
+        border-radius: 0 !important;
+        padding: 4px 0 12px 14px !important;
+        margin-bottom: 16px !important;
+      }
+
+      .ascii-logo {
+        display: none !important;
+      }
+
+      .header-info h1 {
+        color: #0f172a !important;
+        font-size: 18pt !important;
+        letter-spacing: -0.02em;
+      }
+
+      .header-info p {
+        color: #475569 !important;
+        font-size: 9.5pt !important;
+      }
+
+      /* Scan Metadata & KPI Grid */
+      .scan-meta-banner {
+        display: block !important;
+        background: #f8fafc !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 12px 16px !important;
+        margin-bottom: 14px !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .scan-meta-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 10px 16px !important;
+      }
+
+      .kpi-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 10px !important;
+        margin-bottom: 14px !important;
+      }
+
+      .kpi-card {
+        background: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 11px 14px !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .kpi-value {
+        font-size: 15pt !important;
+        color: #0f172a !important;
+      }
+
+      .target-header-banner {
+        background: #f1f5f9 !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 10px 16px !important;
+        margin-bottom: 14px !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      /* Module Sections & Tables */
+      .module-section {
+        border: 1px solid #cbd5e1 !important;
+        margin-top: 0 !important;
+        margin-bottom: 14px !important;
+        background: #ffffff !important;
+      }
+
+      .module-table-wrap {
+        overflow: visible !important;
+      }
+
+      .module-header {
+        background: #f1f5f9 !important;
+        border-bottom: 1px solid #cbd5e1 !important;
+        padding: 8px 14px !important;
+        break-after: avoid;
+        page-break-after: avoid;
+      }
+
+      .module-title {
+        color: #0f172a !important;
+        font-size: 10.5pt !important;
+      }
+
+      .module-badge,
+      .format-pill {
+        background: #e2e8f0 !important;
+        color: #334155 !important;
+        border-color: #cbd5e1 !important;
+      }
+
+      .data-table {
+        font-size: 8.5pt !important;
+        width: 100% !important;
+      }
+
+      .data-table thead {
+        display: table-header-group;
+      }
+
+      .data-table th {
+        background: #f1f5f9 !important;
+        color: #334155 !important;
+        border-bottom: 1.5px solid #cbd5e1 !important;
+        padding: 7px 10px !important;
+      }
+
+      .data-table td {
+        padding: 7px 10px !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        color: #1e293b !important;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+
+      .data-table tbody tr:nth-child(even) td {
+        background: #f8fafc !important;
+      }
+
+      .data-table tr {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .port-badge,
+      .status-code-badge,
+      .risk-badge,
+      .badge {
+        border: 1px solid rgba(0, 0, 0, 0.12) !important;
+      }
+
+      .path-link {
+        color: #0369a1 !important;
+      }
+
+      p, li {
+        orphans: 3;
+        widows: 3;
+      }
+
+      .tech-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        padding: 12px !important;
+      }
+
+      .tech-card,
+      .cors-card,
+      .os-card,
+      .method-pill {
+        background: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .audit-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 10px !important;
+        margin-top: 0 !important;
+        margin-bottom: 14px !important;
+      }
+
+      .cors-item {
+        gap: 12px !important;
+        align-items: baseline !important;
+      }
+
+      .cors-item > span:last-child {
+        text-align: right;
+      }
+
+      .methods-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+        gap: 8px !important;
+        padding: 12px !important;
+      }
+
+      .method-pill.enabled {
+        background: #dcfce7 !important;
+        border-color: #86efac !important;
+      }
+
+      .method-pill.disabled {
+        background: #f8fafc !important;
+        opacity: 1 !important;
+      }
+
+      /* Markdown & Raw Text Print Modes */
+      .md-article {
+        border: none !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #1e293b !important;
+      }
+
+      .md-article h1, .md-article h2, .md-article h3, .md-article h4 {
+        color: #0f172a !important;
+        border-color: #cbd5e1 !important;
+        break-after: avoid;
+        page-break-after: avoid;
+      }
+
+      .md-article th {
+        background: #f1f5f9 !important;
+        color: #0f172a !important;
+      }
+
+      .md-article th, .md-article td {
+        border-color: #cbd5e1 !important;
+      }
+
+      .md-article pre, .md-article code {
+        background: #f8fafc !important;
+        border-color: #cbd5e1 !important;
+        color: #0f172a !important;
+      }
+
+      .txt-viewer {
+        border: 1px solid #cbd5e1 !important;
+      }
+
+      .txt-content-wrap {
+        max-height: none !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+      }
+
+      .txt-line-num {
+        background: #f8fafc !important;
+        color: #64748b !important;
+        border-right-color: #cbd5e1 !important;
+      }
+
+      .txt-line-code {
+        color: #0f172a !important;
+      }
+
+      footer {
+        margin-top: 24px !important;
+        padding-top: 10px !important;
+        border-top: 1px solid #cbd5e1 !important;
+        color: #64748b !important;
+        font-size: 8pt !important;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <div class="print-classification-bar">
+      <span>Confidential — Authorized Security Assessment</span>
+      <span id="printGeneratedAt">RECKON Assessment Report</span>
+    </div>
     <header>
       <div class="header-brand">
         <pre class="ascii-logo">
@@ -1157,6 +1507,14 @@
             <button class="view-mode-btn" type="button" data-view-mode="markdown" onclick="ReckonApp.switchViewMode('markdown')">Markdown</button>
             <button class="view-mode-btn" type="button" data-view-mode="raw" onclick="ReckonApp.switchViewMode('raw')">Raw Text</button>
           </div>
+          <button id="btnExportPdf" class="btn btn-primary" type="button" onclick="ReckonApp.exportPdf()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+            Export PDF
+          </button>
           <button id="btnResetFile" class="btn" type="button">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="1 4 1 10 7 10"></polyline>
@@ -1535,6 +1893,26 @@
         } else {
           this.parseText(this.state.rawSource);
         }
+      },
+
+      preparePrintMetadata() {
+        const genEl = document.getElementById("printGeneratedAt");
+        if (genEl) {
+          genEl.textContent = `Generated: ${new Date().toUTCString()}`;
+        }
+        const scanId = (this.state.scanMetadata && this.state.scanMetadata.scan_id) || '';
+        const activeTarget = (this.state.targets && this.state.targets[this.state.activeTargetIndex] && this.state.targets[this.state.activeTargetIndex].target) || '';
+        const suffix = [scanId, activeTarget].filter(Boolean).join('_').replace(/[^a-zA-Z0-9._-]/g, '_');
+        if (suffix) {
+          document.title = `RECKON_Report_${suffix}`;
+        }
+      },
+
+      exportPdf() {
+        const originalTitle = document.title;
+        this.preparePrintMetadata();
+        window.print();
+        document.title = originalTitle;
       },
 
       routeToParser(format, content) {
@@ -3000,6 +3378,10 @@
 
     window.addEventListener("DOMContentLoaded", () => {
       ReckonApp.init();
+    });
+
+    window.addEventListener("beforeprint", () => {
+      ReckonApp.preparePrintMetadata();
     });
   </script>
 </body>
