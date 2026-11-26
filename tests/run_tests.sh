@@ -286,6 +286,7 @@ if [[ -n "$SELECTED_BATCHES" ]]; then
                 queue_file "$PROJECT_ROOT/tests/unit/test_lib_term.sh"
                 queue_file "$PROJECT_ROOT/tests/unit/test_lib_results.sh"
                 queue_file "$PROJECT_ROOT/tests/unit/test_lib_reporting.sh"
+                queue_file "$PROJECT_ROOT/tests/unit/test_web_viewer.sh"
                 ;;
             unit_net)
                 queue_file "$PROJECT_ROOT/tests/unit/test_module_common.sh"
