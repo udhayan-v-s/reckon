@@ -1125,6 +1125,12 @@
         </div>
       </div>
       <div class="header-actions">
+        <button id="btnDemoHeader" class="btn" type="button" onclick="ReckonApp.loadDemoData()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Demo Mode
+        </button>
         <span class="badge badge-success">Offline Ready</span>
       </div>
     </header>
@@ -1177,14 +1183,22 @@
           <span class="format-pill">report.md</span>
           <span class="format-pill">report.txt</span>
         </div>
-        <button id="btnBrowse" class="btn btn-primary" type="button">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-            <polyline points="17 8 12 3 7 8"></polyline>
-            <line x1="12" y1="3" x2="12" y2="15"></line>
-          </svg>
-          Browse Files
-        </button>
+        <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+          <button id="btnBrowse" class="btn btn-primary" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            Browse Files
+          </button>
+          <button id="btnLoadDemo" class="btn" type="button" onclick="event.stopPropagation(); ReckonApp.loadDemoData();">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            Load Sample Report
+          </button>
+        </div>
       </section>
 
       <!-- Visualizer Views Container (Populated in subsequent commits) -->
@@ -1322,6 +1336,149 @@
         };
 
         reader.readAsText(file);
+      },
+
+      loadDemoData() {
+        const sampleReport = {
+          schema_version: "1.0",
+          scan_metadata: {
+            app_name: "RECKON",
+            app_version: "1.0.0",
+            scan_id: "RECKON-DEMO-001",
+            scan_mode: "all",
+            scan_profile: "default",
+            timestamp: "2026-11-26T12:00:00Z",
+            output_directory: "results/demo",
+            targets_count: 2,
+            wordlist: "/usr/share/wordlists/dirb/common.txt"
+          },
+          summary: {
+            total_targets: 2,
+            total_hosts_up: 2,
+            total_open_ports: 5,
+            total_subdomains: 3,
+            total_web_endpoints: 8,
+            total_security_issues: 5
+          },
+          targets: [
+            {
+              target: "10.10.10.42",
+              target_type: "ipv4",
+              host_status: "UP",
+              dns: [
+                { type: "PTR", name: "10.10.10.42", value: "web-prod.reckon.local" }
+              ],
+              ports: [22, 80, 443],
+              services: [
+                { port: 22, protocol: "tcp", status: "open", service: "ssh", version: "OpenSSH 8.9p1 Ubuntu 3ubuntu0.6" },
+                { port: 80, protocol: "tcp", status: "open", service: "http", version: "nginx 1.24.0 (Ubuntu)" },
+                { port: 443, protocol: "tcp", status: "open", service: "https", version: "nginx 1.24.0 (TLSv1.3)" }
+              ],
+              os: [
+                { name: "Ubuntu Linux 22.04 LTS", accuracy: 96, type: "general purpose" }
+              ],
+              subdomains: ["api.reckon.local", "admin.reckon.local", "dev.reckon.local"],
+              technologies: [
+                { name: "nginx", version: "1.24.0", categories: "Web Server" },
+                { name: "Bootstrap", version: "5.3", categories: "UI Framework" },
+                { name: "jQuery", version: "3.7.1", categories: "JavaScript Library" }
+              ],
+              cms: [],
+              waf: [{ name: "ModSecurity" }],
+              directories: [
+                { path: "/admin", status: 302, length: "145", redirect: "/admin/login" },
+                { path: "/assets", status: 301, length: "169", redirect: "http://10.10.10.42/assets/" },
+                { path: "/api/v1", status: 200, length: "512", redirect: "-" }
+              ],
+              files: [
+                { path: "/.env.bak", status: 200, length: "420", classification: "CRITICAL (Credential / Secret Leak)" },
+                { path: "/.htaccess", status: 403, length: "277", classification: "HIGH (Configuration File)" },
+                { path: "/robots.txt", status: 200, length: "64", classification: "LOW (Standard Web Metadata)" },
+                { path: "/index.html", status: 200, length: "2048", classification: "INFO (Accessible Resource)" }
+              ],
+              resources: [
+                { path: "/robots.txt", status: 200, size: "64", details: "Disallow rules: 2 (/admin, /api/internal)" },
+                { path: "/sitemap.xml", status: 200, size: "890", details: "Indexed URLs: 12" }
+              ],
+              http_analysis: {
+                headers: [
+                  { header: "Strict-Transport-Security", status: "PRESENT", value: "max-age=31536000; includeSubDomains" },
+                  { header: "Content-Security-Policy", status: "MISSING", value: "-" },
+                  { header: "X-Frame-Options", status: "PRESENT", value: "SAMEORIGIN" },
+                  { header: "X-Content-Type-Options", status: "MISSING", value: "-" }
+                ],
+                disclosures: [
+                  { header: "Server", value: "nginx/1.24.0 (Ubuntu)" },
+                  { header: "X-Powered-By", value: "PHP/8.1.2" }
+                ],
+                cors: {
+                  origin_reflected: true,
+                  credentials_allowed: false,
+                  risk: "MEDIUM",
+                  allow_origin: "https://evil.example",
+                  status: "Origin reflected without credentials"
+                },
+                methods: [
+                  { method: "GET", status: "ENABLED", code: "200" },
+                  { method: "POST", status: "ENABLED", code: "200" },
+                  { method: "OPTIONS", status: "ENABLED", code: "204" },
+                  { method: "PUT", status: "DISABLED", code: "405" },
+                  { method: "DELETE", status: "DISABLED", code: "405" }
+                ]
+              }
+            },
+            {
+              target: "api.reckon.local",
+              target_type: "domain",
+              host_status: "UP",
+              dns: [
+                { type: "A", name: "api.reckon.local", value: "10.10.10.45" }
+              ],
+              ports: [443, 8443],
+              services: [
+                { port: 443, protocol: "tcp", status: "open", service: "https", version: "Envoy Proxy" },
+                { port: 8443, protocol: "tcp", status: "open", service: "https-alt", version: "Go net/http" }
+              ],
+              os: [],
+              technologies: [
+                { name: "Envoy", version: "1.28", categories: "Reverse Proxy" }
+              ],
+              directories: [
+                { path: "/health", status: 200, length: "28", redirect: "-" }
+              ],
+              files: [],
+              resources: [],
+              http_analysis: {
+                headers: [
+                  { header: "Strict-Transport-Security", status: "PRESENT", value: "max-age=63072000" },
+                  { header: "X-Content-Type-Options", status: "PRESENT", value: "nosniff" }
+                ],
+                disclosures: [],
+                cors: {
+                  origin_reflected: false,
+                  credentials_allowed: false,
+                  risk: "LOW",
+                  allow_origin: "-",
+                  status: "Secure (Strict Origin Policy)"
+                },
+                methods: [
+                  { method: "GET", status: "ENABLED", code: "200" },
+                  { method: "POST", status: "ENABLED", code: "200" }
+                ]
+              }
+            }
+          ]
+        };
+
+        const rawJson = JSON.stringify(sampleReport, null, 2);
+        this.state.rawSource = rawJson;
+        this.state.fileName = "demo_results.json (Sample Preview)";
+        this.state.fileSize = rawJson.length;
+        this.state.format = "json";
+        this.state.filters = { query: '', quick: 'all' };
+
+        this.updateFileBar(this.state.fileName, this.state.fileSize, "json");
+        this.routeToParser("json", rawJson);
       },
 
       updateFileBar(name, size, format) {
