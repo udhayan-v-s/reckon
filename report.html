@@ -1749,10 +1749,10 @@
                 { path: "/api/v1", status: 200, length: "512", redirect: "-" }
               ],
               files: [
-                { path: "/.env.bak", status: 200, length: "420", classification: "CRITICAL (Credential / Secret Leak)" },
-                { path: "/.htaccess", status: 403, length: "277", classification: "HIGH (Configuration File)" },
-                { path: "/robots.txt", status: 200, length: "64", classification: "LOW (Standard Web Metadata)" },
-                { path: "/index.html", status: 200, length: "2048", classification: "INFO (Accessible Resource)" }
+                { path: "/.env.bak", status: 200, length: "420", classification: "Credential / Secret Leak" },
+                { path: "/.htaccess", status: 403, length: "277", classification: "Configuration File" },
+                { path: "/robots.txt", status: 200, length: "64", classification: "Standard Web Metadata" },
+                { path: "/index.html", status: 200, length: "2048", classification: "Accessible Resource" }
               ],
               resources: [
                 { path: "/robots.txt", status: 200, size: "64", details: "Disallow rules: 2 (/admin, /api/internal)" },
@@ -1772,7 +1772,6 @@
                 cors: {
                   origin_reflected: true,
                   credentials_allowed: false,
-                  risk: "MEDIUM",
                   allow_origin: "https://evil.example",
                   status: "Origin reflected without credentials"
                 },
@@ -1815,7 +1814,6 @@
                 cors: {
                   origin_reflected: false,
                   credentials_allowed: false,
-                  risk: "LOW",
                   allow_origin: "-",
                   status: "Secure (Strict Origin Policy)"
                 },
@@ -2009,8 +2007,7 @@
               disclosures: [],
               cors: {
                 origin_reflected: false,
-                credentials_allowed: false,
-                risk: 'NONE'
+                credentials_allowed: false
               },
               methods: []
             }, t.http_analysis || {}),
@@ -2276,7 +2273,7 @@
               <button class="filter-chip ${this.state.filters.quick === '2xx' ? 'active' : ''}" type="button" data-quick-filter="2xx">2xx OK</button>
               <button class="filter-chip ${this.state.filters.quick === '3xx' ? 'active' : ''}" type="button" data-quick-filter="3xx">3xx Redirect</button>
               <button class="filter-chip ${this.state.filters.quick === '4xx' ? 'active' : ''}" type="button" data-quick-filter="4xx">4xx Auth/Deny</button>
-              <button class="filter-chip ${this.state.filters.quick === 'risk' ? 'active' : ''}" type="button" data-quick-filter="risk">Critical / High / Missing</button>
+              <button class="filter-chip ${this.state.filters.quick === 'risk' ? 'active' : ''}" type="button" data-quick-filter="risk">Missing / Vulnerable</button>
               <button class="btn" id="btnClearFilters" type="button" style="padding: 5px 10px; font-size: 0.78rem; display: none;">Clear</button>
               <span class="filter-stats" id="filterMatchStats"></span>
             </div>
@@ -2361,7 +2358,7 @@
         if (quick === '3xx') return !!rowEl.querySelector('.status-3xx') || /\b3\d\d\b/.test(text);
         if (quick === '4xx') return !!rowEl.querySelector('.status-4xx') || /\b4\d\d\b/.test(text);
         if (quick === 'risk') {
-          return text.includes('CRITICAL') || text.includes('HIGH') || text.includes('MISSING') || text.includes('VULNERABLE');
+          return text.includes('MISSING') || text.includes('VULNERABLE') || text.includes('CREDENTIAL') || text.includes('SECRET') || text.includes('CONFIGURATION');
         }
         return true;
       },
@@ -2678,13 +2675,9 @@
       },
 
       getRiskBadge(classification) {
-        if (!classification) return `<span class="risk-badge risk-info">INFO</span>`;
-        const upper = classification.toUpperCase();
-        if (upper.includes('CRITICAL')) return `<span class="risk-badge risk-critical">CRITICAL</span>`;
-        if (upper.includes('HIGH')) return `<span class="risk-badge risk-high">HIGH</span>`;
-        if (upper.includes('MEDIUM')) return `<span class="risk-badge risk-medium">MEDIUM</span>`;
-        if (upper.includes('LOW')) return `<span class="risk-badge risk-low">LOW</span>`;
-        return `<span class="risk-badge risk-info">${this.escapeHtml(classification)}</span>`;
+        if (!classification) return `<span class="format-pill">General</span>`;
+        const cleaned = String(classification).replace(/^(CRITICAL|HIGH|MEDIUM|LOW|INFO)\s*\((.*)\)$/i, '$2').trim();
+        return `<span class="format-pill">${this.escapeHtml(cleaned || 'General')}</span>`;
       },
 
       renderWebSection(target) {
@@ -2769,7 +2762,7 @@
                     <tr>
                       <th style="width: 80px;">Status</th>
                       <th>Path</th>
-                      <th style="width: 140px;">Classification</th>
+                      <th style="width: 220px;">Category</th>
                       <th style="width: 100px;">Size</th>
                     </tr>
                   </thead>
@@ -2886,7 +2879,7 @@
         const methods = http.methods || [];
 
         // Check if there are any audit items at all
-        if (headers.length === 0 && disclosures.length === 0 && !cors.risk && methods.length === 0) {
+        if (headers.length === 0 && disclosures.length === 0 && !cors.status && !cors.allow_origin && !cors.risk && methods.length === 0) {
           return '';
         }
 
@@ -2939,17 +2932,7 @@
           `;
         }
 
-        // 2. CORS Misconfiguration Risk & Info Disclosures
-        const corsRisk = (cors.risk || 'NONE').toUpperCase();
-        let corsRiskBadge = `<span class="risk-badge risk-low">SECURE</span>`;
-        if (corsRisk === 'CRITICAL' || corsRisk === 'HIGH') {
-          corsRiskBadge = `<span class="risk-badge risk-critical">${corsRisk}</span>`;
-        } else if (corsRisk === 'MEDIUM') {
-          corsRiskBadge = `<span class="risk-badge risk-medium">MEDIUM</span>`;
-        } else if (corsRisk === 'LOW') {
-          corsRiskBadge = `<span class="risk-badge risk-low">LOW</span>`;
-        }
-
+        // 2. CORS Policy Evaluation & Info Disclosures
         const corsCardHtml = `
           <div class="cors-card">
             <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -2961,7 +2944,6 @@
                 </svg>
                 CORS Policy Evaluation
               </div>
-              ${corsRiskBadge}
             </div>
             <div class="cors-item">
               <span style="color: var(--text-muted);">Origin Reflected:</span>
