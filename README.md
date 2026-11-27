@@ -12,6 +12,7 @@ RECKON orchestrates standard security tools into a streamlined, automated workfl
 - **Intelligent Target Handling:** Accepts IPv4 addresses, CIDR ranges, hostnames, domain names, URLs (`http://` / `https://`), or target files.
 - **25 Dedicated Modules:** Modular architecture allowing full scans or targeted module execution.
 - **Multi-Format Reporting:** Generates clean **Markdown (`report.md`)**, **Plain Text (`report.txt`)**, and schema-validated **JSON (`results.json`)**.
+- **Offline Web Visualizer (`report.html`):** Standalone, zero-dependency browser viewer for inspecting `results.json`, `report.md`, and `report.txt` with search, sorting, view toggles, demo mode, and executive PDF export.
 - **Historical Scan Tracking:** Every scan run is preserved in its own timestamped subfolder with a `latest` link—subsequent scans never overwrite prior results.
 - **Graceful Fallbacks:** Built-in tool fallback engines (e.g., curl-based fuzzing and fingerprinting if specialized tools like `ffuf` or `whatweb` are missing).
 - **Zero Configuration Required:** Ready to run out of the box with sensible defaults and support for custom wordlists, thread controls, and JSON config files.
@@ -145,6 +146,51 @@ results/
     ├── report.md                      # Direct access to latest report
     ├── report.txt
     └── results.json
+```
+
+---
+
+## Web Report Visualizer (`report.html`)
+
+RECKON includes a standalone, **100% offline** web visualizer (`report.html` in the repository root) with zero external CDN or network dependencies.
+
+### Quick Workflow
+
+1. **Open the viewer** directly in your browser:
+   ```bash
+   xdg-open report.html
+   # Or open file:///path/to/reckon/report.html in Firefox / Chrome
+   ```
+2. **Load a scan report** by dragging and dropping any output file (`results.json`, `report.md`, or `report.txt`) onto the upload zone, or click **Browse Files**.
+   - Want to preview the UI without running a scan? Click **Demo Mode** / **Load Sample Report**.
+
+### Supported Formats & Views
+
+| File Format | Visualizer Mode | Capabilities |
+| :--- | :--- | :--- |
+| `results.json` | **Interactive Dashboard** | Executive KPI cards, multi-target switcher tabs, open ports & services, OS/DNS records, technologies/WAF/CMS, directories & files, security headers, CORS evaluation, HTTP methods, global search, quick filters, and column sorting |
+| `report.md` | **Rendered Markdown** | Clean typography, formatted tables, and syntax-styled code blocks |
+| `report.txt` | **Raw ASCII Log Viewer** | Monospace line-numbered log view with live line search and match highlighting |
+
+### Additional Controls
+
+- **View Mode Toggle:** Switch between `Dashboard`, `Markdown`, and `Raw Text` views for the loaded file.
+- **Export PDF:** Click **Export PDF** (or press `Ctrl+P`) to generate a clean, light-themed A4 executive PDF report with automatic pagination and zebra-striped tables.
+
+---
+
+## Testing
+
+Run the unified test suite (unit, integration, web viewer, and security audit):
+
+```bash
+./tests/run_tests.sh
+```
+
+Or run the web viewer validation suite individually:
+
+```bash
+./tests/run_tests.sh tests/unit/test_web_viewer.sh
 ```
 
 ---
