@@ -976,6 +976,7 @@ EOF
                             fst="$(jq -r ".targets[$t_idx].files[$fil_i].status // \"200\"" "$results_file")"
                             fsz="$(jq -r ".targets[$t_idx].files[$fil_i].length // \"820 B\"" "$results_file")"
                             fcat="$(jq -r ".targets[$t_idx].files[$fil_i].classification // \"General\"" "$results_file")"
+                            fcat="$(printf '%s' "$fcat" | sed -E 's/^(CRITICAL|HIGH|MEDIUM|LOW|INFO)[[:space:]]*\((.*)\)$/\2/')"
                             printf '| `%s` | %s | %s | %s |\n' "$fp" "$fst" "$fsz" "$fcat"
                             (( fil_i += 1 ))
                         done
@@ -1132,14 +1133,13 @@ EOF
                             done
                             printf '\n'
                         fi
-                        if [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" && "$cors_risk" != "-" && -n "$cors_risk" ]]; then
-                            local corig ccred cstatus
-                            corig="$(jq -r ".targets[$t_idx].http_analysis.cors.allow_origin // \"*\"" "$results_file")"
-                            [[ "$corig" == "-" || -z "$corig" ]] && corig="(none)"
-                            ccred="$(jq -r ".targets[$t_idx].http_analysis.cors.credentials_allowed // false" "$results_file")"
-                            cstatus="$(jq -r ".targets[$t_idx].http_analysis.cors.status // \"-\"" "$results_file")"
-                            printf '##### CORS Configuration Risk\n\n'
-                            printf -- '- **Risk Assessment:** **%s**\n' "$cors_risk"
+                        local corig ccred cstatus
+                        corig="$(jq -r ".targets[$t_idx].http_analysis.cors.allow_origin // \"*\"" "$results_file")"
+                        [[ "$corig" == "-" || -z "$corig" ]] && corig="(none)"
+                        ccred="$(jq -r ".targets[$t_idx].http_analysis.cors.credentials_allowed // false" "$results_file")"
+                        cstatus="$(jq -r ".targets[$t_idx].http_analysis.cors.status // \"-\"" "$results_file")"
+                        if [[ ("$cors_risk" != "NONE" && "$cors_risk" != "null" && "$cors_risk" != "-" && -n "$cors_risk") || ("$cstatus" != "null" && "$cstatus" != "-" && -n "$cstatus") ]]; then
+                            printf '##### CORS Policy Evaluation\n\n'
                             printf -- '- **Access-Control-Allow-Origin:** `%s`\n' "$corig"
                             printf -- '- **Credentials Allowed:** `%s`\n' "$ccred"
                             printf -- '- **Finding:** %s\n\n' "$cstatus"
@@ -2995,6 +2995,7 @@ HTML_FILE_HEAD
                     fstat="$(jq -r ".targets[$t_idx].files[$f_i].status // 200" "$results_file")"
                     flen="$(jq -r ".targets[$t_idx].files[$f_i].length // \"-\"" "$results_file")"
                     fclass="$(jq -r ".targets[$t_idx].files[$f_i].classification // \"-\"" "$results_file")"
+                    fclass="$(printf '%s' "$fclass" | sed -E 's/^(CRITICAL|HIGH|MEDIUM|LOW|INFO)[[:space:]]*\((.*)\)$/\2/')"
                     printf '        <tr><td><code>%s</code></td><td>%s</td><td>%s</td><td><span class="badge badge-info">%s</span></td></tr>\n' \
                         "$fp" "$fstat" "$flen" "$fclass" >> "$raw_html_tmp"
                     (( f_i += 1 ))
