@@ -430,7 +430,9 @@ results_parse_files() {
             esc_p="$(results_escape_json "$p")"
             esc_code="${code:-200}"
             esc_len="$(results_escape_json "${len:--}")"
-            esc_class="$(results_escape_json "${class:-General}")"
+            class="${class:-General}"
+            class="$(printf '%s' "$class" | sed -E 's/^(CRITICAL|HIGH|MEDIUM|LOW|INFO)[[:space:]]*\((.*)\)$/\2/')"
+            esc_class="$(results_escape_json "$class")"
             items+=("{\"path\": \"$esc_p\", \"status\": $esc_code, \"length\": \"$esc_len\", \"classification\": \"$esc_class\"}")
         done < "$file_file"
     fi
@@ -566,7 +568,7 @@ results_parse_http_analysis() {
     local -a headers=()
     local -a disclosures=()
     local -a methods=()
-    local cors_json="{\"origin_reflected\": false, \"credentials_allowed\": false, \"risk\": \"NONE\"}"
+    local cors_json="{\"origin_reflected\": false, \"credentials_allowed\": false}"
 
     if [[ -f "$ha_file" && -s "$ha_file" ]]; then
         local kind col1 col2 col3 col4
@@ -613,8 +615,8 @@ results_parse_http_analysis() {
                     local cred="false"
                     [[ -n "$acao" && "$acao" != "-" && "$acao" != "(none)" ]] && refl="true"
                     [[ "$acac" == "true" ]] && cred="true"
-                    cors_json="{\"origin_reflected\": $refl, \"credentials_allowed\": $cred, \"risk\": \"$risk\", \"allow_origin\": \"$esc_acao\", \"status\": \"$esc_status\"}"
-                    if [[ "$risk" == "HIGH" || "$risk" == "MEDIUM" ]]; then
+                    cors_json="{\"origin_reflected\": $refl, \"credentials_allowed\": $cred, \"allow_origin\": \"$esc_acao\", \"status\": \"$esc_status\"}"
+                    if [[ "$risk" == "HIGH" || "$risk" == "MEDIUM" || "$risk" == "Vulnerable" || "$status" == Vulnerable* ]]; then
                         (( RESULTS_TOTAL_SECURITY_ISSUES += 1 ))
                     fi
                     ;;
@@ -932,7 +934,7 @@ _results_accumulate_target_metrics() {
         local cnt
         cnt="$(grep -c -E '^HEADER[[:space:]]+.*[[:space:]]+MISSING' "$target_dir/http-analysis/http_analysis.txt" 2>/dev/null || true)"
         [[ "$cnt" =~ ^[0-9]+$ ]] && (( RESULTS_TOTAL_SECURITY_ISSUES += cnt ))
-        cnt="$(grep -c -E '^CORS[[:space:]]+.*[[:space:]]+(HIGH|MEDIUM)' "$target_dir/http-analysis/http_analysis.txt" 2>/dev/null || true)"
+        cnt="$(grep -c -E '^CORS[[:space:]]+.*[[:space:]]+(HIGH|MEDIUM|Vulnerable)' "$target_dir/http-analysis/http_analysis.txt" 2>/dev/null || true)"
         [[ "$cnt" =~ ^[0-9]+$ ]] && (( RESULTS_TOTAL_SECURITY_ISSUES += cnt ))
     fi
     if [[ -f "$target_dir/tls/tls_audit.txt" ]]; then
