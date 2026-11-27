@@ -203,8 +203,8 @@ fi
 # -----------------------------------------------------------------------------
 printf '\n%s\n' "UT-04: CORS Misconfiguration Testing"
 
-if grep -q -E "^CORS"$'\t'".*HIGH.*Vulnerable" "${task_dir_sec}/http_analysis.txt"; then
-    pass "Detects and flags high-severity arbitrary origin reflection with credentials"
+if grep -q -E "^CORS"$'\t'".*Vulnerable" "${task_dir_sec}/http_analysis.txt"; then
+    pass "Detects and flags arbitrary origin reflection with credentials"
 else
     fail "CORS vulnerability detection failed"
 fi

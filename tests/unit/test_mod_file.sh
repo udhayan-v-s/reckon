@@ -174,7 +174,7 @@ module_file_run "http://corp.local" "url_http" "$task_dir_ffuf"
 if [[ -f "${task_dir_ffuf}/files.txt" ]] && \
    grep -q -E "^/.env"$'\t'"200"$'\t'"340" "${task_dir_ffuf}/files.txt" && \
    grep -q -E "^/wp-config.php.bak"$'\t'"200" "${task_dir_ffuf}/files.txt" && \
-   grep -q "CRITICAL" "${task_dir_ffuf}/files.txt"; then
+   grep -q "Credential / Secret Leak" "${task_dir_ffuf}/files.txt"; then
     pass "FFUF engine extracts and classifies accessible files into files.txt"
 else
     fail "FFUF engine failed to write expected files into files.txt"

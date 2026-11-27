@@ -96,24 +96,24 @@ readonly _FILE_BUILTIN_TARGETS=(
     "docker-compose.yml"
 )
 
-# Classify a discovered file based on its path and sensitivity risk.
+# Classify a discovered file based on its path and category.
 _file_classify_path() {
     local path="$1"
     case "$path" in
         *.env*|*.git*|*id_rsa*|*.htpasswd*|*.sql|*.zip|*.tar.gz)
-            printf '%s\n' "CRITICAL (Credential / Secret Leak)"
+            printf '%s\n' "Credential / Secret Leak"
             ;;
         *.htaccess*|*.hta*|*config*|*settings*|*database.yml*|*.conf|*.ini|*.yml|*.yaml)
-            printf '%s\n' "HIGH (Configuration File)"
+            printf '%s\n' "Configuration File"
             ;;
         *phpinfo*|*info.php*|*test.php*)
-            printf '%s\n' "MEDIUM (Diagnostic / Info Disclosure)"
+            printf '%s\n' "Diagnostic / Info Disclosure"
             ;;
         *robots.txt*|*sitemap.xml*|*.well-known/*)
-            printf '%s\n' "LOW (Standard Web Metadata)"
+            printf '%s\n' "Standard Web Metadata"
             ;;
         *)
-            printf '%s\n' "INFO (Accessible Resource)"
+            printf '%s\n' "Accessible Resource"
             ;;
     esac
 }

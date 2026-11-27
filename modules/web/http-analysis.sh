@@ -153,18 +153,18 @@ module_http_analysis_run() {
     rm -f "$cors_tmp"
 
     local cors_status="Secure (No CORS reflection)"
-    local cors_risk="LOW"
+    local cors_risk="Secure"
     if [[ "$acao" == "$cors_origin" ]]; then
         if [[ "$acac" == "true" ]]; then
             cors_status="Vulnerable: Arbitrary Origin Reflected with Credentials Allowed!"
-            cors_risk="HIGH"
+            cors_risk="Vulnerable"
         else
             cors_status="Vulnerable: Arbitrary Origin Reflected (ACAC: false)"
-            cors_risk="MEDIUM"
+            cors_risk="Vulnerable"
         fi
     elif [[ "$acao" == "*" ]]; then
         cors_status="Permissive: Access-Control-Allow-Origin wildcard (*)"
-        cors_risk="LOW"
+        cors_risk="Permissive"
     fi
     printf 'CORS\t%s\t%s\t%s\t%s\n' "${acao:--}" "${acac:--}" "$cors_risk" "$cors_status" >> "$analysis_file"
 

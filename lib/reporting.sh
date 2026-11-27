@@ -2332,6 +2332,7 @@ EOF
                         fst="$(jq -r ".targets[$t_idx].files[$fil_i].status // \"200\"" "$results_file")"
                         fsz="$(jq -r ".targets[$t_idx].files[$fil_i].length // \"820 B\"" "$results_file")"
                         fcat="$(jq -r ".targets[$t_idx].files[$fil_i].classification // \"General\"" "$results_file")"
+                        fcat="$(printf '%s' "$fcat" | sed -E 's/^(CRITICAL|HIGH|MEDIUM|LOW|INFO)[[:space:]]*\((.*)\)$/\2/')"
                         printf '        %-29s%-13s%-11s%s\n' "$fp" "$fst" "$fsz" "$fcat"
                         (( fil_i += 1 ))
                     done
@@ -2475,10 +2476,11 @@ EOF
                         (( d_i += 1 ))
                     done
                     if [[ "$cors_risk" != "NONE" && "$cors_risk" != "null" && "$cors_risk" != "-" && -n "$cors_risk" ]]; then
-                        local co
+                        local co cstatus
                         co="$(jq -r ".targets[$t_idx].http_analysis.cors.allow_origin // \"*\"" "$results_file")"
                         [[ "$co" == "-" || -z "$co" ]] && co="(none)"
-                        printf '        %-21s%-28s%s\n' "CORS Policy" "$co" "Risk: $cors_risk"
+                        cstatus="$(jq -r ".targets[$t_idx].http_analysis.cors.status // \"Evaluated\"" "$results_file")"
+                        printf '        %-21s%-28s%s\n' "CORS Policy" "$co" "$cstatus"
                     fi
                     printf '\n'
                     printf '        %-13s: %s\n\n' "Summary" "$total_obs security observations"
